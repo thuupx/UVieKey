@@ -103,7 +103,7 @@ struct AppsPane: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("UVieKey will pass through all keystrokes untouched for these apps, as if the IME were disabled.")
+                        Text("Tắt UVieKey cho các ứng dụng này")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 
@@ -166,7 +166,7 @@ struct AppsPane: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("Các app này cần gửi ký tự rỗng trước khi backspace để tránh lỗi autocomplete.")
+                        Text("Nếu ứng dụng này có lỗi autocomplete, hãy thêm nó vào danh sách này.")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 
@@ -229,7 +229,7 @@ struct AppsPane: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("Các app này dùng Shift+Left Arrow thay vì backspace để tránh duplicate characters.")
+                        Text("Nếu trình duyệt Chromium (Chrome, Edge, Brave,...) không nhận được dấu câu đúng, hãy thêm nó vào danh sách này.")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 
