@@ -20,4 +20,5 @@ enum DefaultsKey {
     static let keepPopoverOpen = "KeepPopoverOpen"
     static let customCompoundApps = "CustomCompoundApps"
     static let customChromiumApps = "CustomChromiumApps"
+    static let customExcludedApps = "CustomExcludedApps"
 }

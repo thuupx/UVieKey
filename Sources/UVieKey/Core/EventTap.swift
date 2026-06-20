@@ -33,6 +33,16 @@ private let bypassApps: Set<String> = [
     "com.apple.systemuiserver",
 ]
 
+/// Apps the user explicitly wants to exclude from UVieKey processing.
+/// Events for these apps pass through untouched.
+private let defaultExcludedApps: Set<String> = []
+
+/// Get excluded apps from UserDefaults (defaults + custom)
+private func getExcludedApps() -> Set<String> {
+    let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customExcludedApps) ?? []
+    return Set(defaultExcludedApps).union(Set(custom))
+}
+
 /// Default Chromium browsers that need Shift+Left Arrow selection
 /// instead of plain backspace (avoids duplicate chars).
 private let defaultChromiumBrowsers: Set<String> = []
@@ -49,6 +59,10 @@ private func checkIsCompoundApp(_ bundleID: String) -> Bool {
 
 private func checkIsChromiumBrowser(_ bundleID: String) -> Bool {
     getChromiumBrowsers().contains(bundleID)
+}
+
+private func checkIsExcludedApp(_ bundleID: String) -> Bool {
+    getExcludedApps().contains(bundleID)
 }
 
 /// Returns true for shortcuts that select text (Cmd+A, Shift+arrows, etc.).
@@ -282,6 +296,10 @@ final class EventTap: ObservableObject {
         checkIsChromiumBrowser(appDetector.bundleID)
     }
 
+    private var isExcludedApp: Bool {
+        checkIsExcludedApp(appDetector.bundleID)
+    }
+
     private var isAXApp: Bool {
         axApps.contains(appDetector.bundleID)
     }
@@ -298,6 +316,14 @@ final class EventTap: ObservableObject {
 
         // Bypass system UI apps
         if shouldBypass {
+            return Unmanaged.passRetained(event)
+        }
+
+        // User-excluded apps: pass all events through untouched.
+        // Reset the engine so stale composing state doesn't leak when the user
+        // switches back to a normal app.
+        if isExcludedApp {
+            _engine.reset()
             return Unmanaged.passRetained(event)
         }
 
