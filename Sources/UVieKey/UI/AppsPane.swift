@@ -73,31 +73,11 @@ struct AppsPane: View {
         "com.apple.TextEdit",
         "com.apple.mail",
         "com.apple.iWork",
-        "com.google.Chrome",
-        "com.google.Chrome.canary",
-        "com.brave.Browser",
-        "com.brave.Browser.nightly",
-        "com.microsoft.edgemac",
-        "com.microsoft.edgemac.Dev",
-        "com.microsoft.edgemac.Beta",
-        "com.microsoft.Edge.Dev",
-        "com.microsoft.Edge",
-        "org.chromium.Chromium",
+        // Chromium browsers are intentionally excluded; they work correctly as
+        // regular apps. Adding them here caused backspace/delete issues.
     ]
 
-    private let defaultChromiumApps: [String] = [
-        "com.google.Chrome",
-        "com.google.Chrome.canary",
-        "com.brave.Browser",
-        "com.brave.Browser.nightly",
-        "com.microsoft.edgemac",
-        "com.microsoft.edgemac.Dev",
-        "com.microsoft.edgemac.Beta",
-        "com.microsoft.Edge.Dev",
-        "com.microsoft.Edge",
-        "org.chromium.Chromium",
-        "ai.perplexity.comet",
-    ]
+    private let defaultChromiumApps: [String] = []
 
     enum PickerMode {
         case compound
@@ -178,7 +158,7 @@ struct AppsPane: View {
             PaneSection("Chromium Browsers") {
                 SettingsCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Các trình duyệt Chromium cần workaround")
+                        Text("Chromium Browsers")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
