@@ -1,0 +1,6 @@
+.idea
+.DS_Store
+.build
+.swiftpm
+xcuserdata/
+Sources/UVieKey/Generated/
