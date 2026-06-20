@@ -11,16 +11,6 @@ private let defaultCompoundApps: Set<String> = [
     "com.apple.TextEdit",
     "com.apple.mail",
     "com.apple.iWork",
-    "com.google.Chrome",
-    "com.google.Chrome.canary",
-    "com.brave.Browser",
-    "com.brave.Browser.nightly",
-    "com.microsoft.edgemac",
-    "com.microsoft.edgemac.Dev",
-    "com.microsoft.edgemac.Beta",
-    "com.microsoft.Edge.Dev",
-    "com.microsoft.Edge",
-    "org.chromium.Chromium",
 ]
 
 /// Get compound apps from UserDefaults (defaults + custom)
@@ -43,21 +33,19 @@ private let bypassApps: Set<String> = [
     "com.apple.systemuiserver",
 ]
 
+/// Apps the user explicitly wants to exclude from UVieKey processing.
+/// Events for these apps pass through untouched.
+private let defaultExcludedApps: Set<String> = []
+
+/// Get excluded apps from UserDefaults (defaults + custom)
+private func getExcludedApps() -> Set<String> {
+    let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customExcludedApps) ?? []
+    return Set(defaultExcludedApps).union(Set(custom))
+}
+
 /// Default Chromium browsers that need Shift+Left Arrow selection
 /// instead of plain backspace (avoids duplicate chars).
-private let defaultChromiumBrowsers: Set<String> = [
-    "com.google.Chrome",
-    "com.google.Chrome.canary",
-    "com.brave.Browser",
-    "com.brave.Browser.nightly",
-    "com.microsoft.edgemac",
-    "com.microsoft.edgemac.Dev",
-    "com.microsoft.edgemac.Beta",
-    "com.microsoft.Edge.Dev",
-    "com.microsoft.Edge",
-    "org.chromium.Chromium",
-    "ai.perplexity.comet",
-]
+private let defaultChromiumBrowsers: Set<String> = []
 
 /// Get Chromium browsers from UserDefaults (defaults + custom)
 private func getChromiumBrowsers() -> Set<String> {
@@ -71,6 +59,10 @@ private func checkIsCompoundApp(_ bundleID: String) -> Bool {
 
 private func checkIsChromiumBrowser(_ bundleID: String) -> Bool {
     getChromiumBrowsers().contains(bundleID)
+}
+
+private func checkIsExcludedApp(_ bundleID: String) -> Bool {
+    getExcludedApps().contains(bundleID)
 }
 
 /// Returns true for shortcuts that select text (Cmd+A, Shift+arrows, etc.).
@@ -304,6 +296,10 @@ final class EventTap: ObservableObject {
         checkIsChromiumBrowser(appDetector.bundleID)
     }
 
+    private var isExcludedApp: Bool {
+        checkIsExcludedApp(appDetector.bundleID)
+    }
+
     private var isAXApp: Bool {
         axApps.contains(appDetector.bundleID)
     }
@@ -320,6 +316,14 @@ final class EventTap: ObservableObject {
 
         // Bypass system UI apps
         if shouldBypass {
+            return Unmanaged.passRetained(event)
+        }
+
+        // User-excluded apps: pass all events through untouched.
+        // Reset the engine so stale composing state doesn't leak when the user
+        // switches back to a normal app.
+        if isExcludedApp {
+            _engine.reset()
             return Unmanaged.passRetained(event)
         }
 
@@ -763,26 +767,22 @@ final class EventTap: ObservableObject {
     private func applyBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
         perfNoteEvent(2 * count)
-        for i in 0..<count {
+        for _ in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: true)
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             down?.post(tap: .cghidEventTap)
             let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: false)
             up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             up?.post(tap: .cghidEventTap)
-            // Chromium needs a tiny delay between synthetic events in release builds,
-            // otherwise the OS may deliver them too fast for the browser to process.
-            if isChromium && i < count - 1 {
-                Thread.sleep(forTimeInterval: 0.015)
-            }
         }
     }
 
-    /// Chromium fix: Shift+Left Arrow to select, then type overwrites.
+    /// Shift+Left Arrow selection used for apps where synthetic backspace causes
+    /// duplicate characters. The caller must post the replacement text afterward.
     private func applySelectionBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
         perfNoteEvent(2 * count)
-        for i in 0..<count {
+        for _ in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 123, keyDown: true)
             down?.flags = .maskShift
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
@@ -791,15 +791,6 @@ final class EventTap: ObservableObject {
             up?.flags = .maskShift
             up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             up?.post(tap: .cghidEventTap)
-            // Let Chromium catch up before the next selection event or the overwrite.
-            if i < count - 1 {
-                Thread.sleep(forTimeInterval: 0.005)
-            }
-        }
-        // Extra delay before the overwrite text is posted; release builds can
-        // deliver the events so fast that Chromium hasn't applied the selection yet.
-        if isChromium {
-            Thread.sleep(forTimeInterval: 0.015)
         }
     }
 

@@ -61,11 +61,14 @@ final class AppIconCache {
 // MARK: - Apps Pane
 
 struct AppsPane: View {
+    @State private var excludedApps: [AppEntry] = []
     @State private var compoundApps: [AppEntry] = []
     @State private var chromiumApps: [AppEntry] = []
     @State private var showingAppPicker = false
-    @State private var pickerMode: PickerMode = .compound
+    @State private var pickerMode: PickerMode = .excluded
     @State private var availableApps: [RunningApp] = []
+
+    private let defaultExcludedApps: [String] = []
 
     private let defaultCompoundApps: [String] = [
         "com.apple.Safari",
@@ -73,33 +76,14 @@ struct AppsPane: View {
         "com.apple.TextEdit",
         "com.apple.mail",
         "com.apple.iWork",
-        "com.google.Chrome",
-        "com.google.Chrome.canary",
-        "com.brave.Browser",
-        "com.brave.Browser.nightly",
-        "com.microsoft.edgemac",
-        "com.microsoft.edgemac.Dev",
-        "com.microsoft.edgemac.Beta",
-        "com.microsoft.Edge.Dev",
-        "com.microsoft.Edge",
-        "org.chromium.Chromium",
+        // Chromium browsers are intentionally excluded; they work correctly as
+        // regular apps. Adding them here caused backspace/delete issues.
     ]
 
-    private let defaultChromiumApps: [String] = [
-        "com.google.Chrome",
-        "com.google.Chrome.canary",
-        "com.brave.Browser",
-        "com.brave.Browser.nightly",
-        "com.microsoft.edgemac",
-        "com.microsoft.edgemac.Dev",
-        "com.microsoft.edgemac.Beta",
-        "com.microsoft.Edge.Dev",
-        "com.microsoft.Edge",
-        "org.chromium.Chromium",
-        "ai.perplexity.comet",
-    ]
+    private let defaultChromiumApps: [String] = []
 
     enum PickerMode {
+        case excluded
         case compound
         case chromium
     }
@@ -112,6 +96,69 @@ struct AppsPane: View {
 
     var body: some View {
         PaneScroll {
+            PaneSection("Excluded Apps") {
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Apps excluded from UVieKey")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+
+                        Text("Tắt UVieKey cho các ứng dụng này")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+
+                        Divider()
+
+                        if excludedApps.isEmpty {
+                            Text("Chưa có ứng dụng nào")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 20)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(Array(excludedApps.enumerated()), id: \.element.id) { idx, entry in
+                                    AppRow(bundleID: entry.bundleID, icon: entry.icon) {
+                                        removeExcludedApp(at: idx)
+                                    }
+                                    if idx < excludedApps.count - 1 {
+                                        Divider()
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        HStack {
+                            Button {
+                                pickerMode = .excluded
+                                showingAppPicker = true
+                            } label: {
+                                Label("Thêm ứng dụng", systemImage: "plus")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.blue)
+
+                            Spacer()
+
+                            Button {
+                                resetExcludedToDefaults()
+                            } label: {
+                                Text("Reset mặc định")
+                                    .font(.system(size: 11))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                }
+            }
+
             PaneSection("Compound Apps") {
                 SettingsCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -119,7 +166,7 @@ struct AppsPane: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("Các app này cần gửi ký tự rỗng trước khi backspace để tránh lỗi autocomplete.")
+                        Text("Nếu ứng dụng này có lỗi autocomplete, hãy thêm nó vào danh sách này.")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 
@@ -178,11 +225,11 @@ struct AppsPane: View {
             PaneSection("Chromium Browsers") {
                 SettingsCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Các trình duyệt Chromium cần workaround")
+                        Text("Chromium Browsers")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("Các app này dùng Shift+Left Arrow thay vì backspace để tránh duplicate characters.")
+                        Text("Nếu trình duyệt Chromium (Chrome, Edge, Brave,...) không nhận được dấu câu đúng, hãy thêm nó vào danh sách này.")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 
@@ -241,6 +288,8 @@ struct AppsPane: View {
         .sheet(isPresented: $showingAppPicker) {
             AppPickerSheet(availableApps: availableApps) { selectedBundleID in
                 switch pickerMode {
+                case .excluded:
+                    addExcludedApp(selectedBundleID)
                 case .compound:
                     addCompoundApp(selectedBundleID)
                 case .chromium:
@@ -254,6 +303,7 @@ struct AppsPane: View {
             }
         }
         .onAppear {
+            loadExcludedApps()
             loadCompoundApps()
             loadChromiumApps()
         }
@@ -292,6 +342,39 @@ struct AppsPane: View {
         saveCompoundApps()
     }
 
+    // MARK: - Excluded Apps
+
+    private func loadExcludedApps() {
+        let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customExcludedApps) ?? []
+        let allBundleIDs = defaultExcludedApps + custom
+        excludedApps = allBundleIDs.map { bundleID in
+            AppEntry(bundleID: bundleID, icon: AppIconCache.shared.icon(for: bundleID))
+        }
+    }
+
+    private func saveExcludedApps() {
+        let custom = excludedApps.map { $0.bundleID }.filter { !defaultExcludedApps.contains($0) }
+        UserDefaults.standard.set(custom, forKey: DefaultsKey.customExcludedApps)
+    }
+
+    private func addExcludedApp(_ bundleID: String) {
+        excludedApps.append(AppEntry(bundleID: bundleID, icon: AppIconCache.shared.icon(for: bundleID)))
+        saveExcludedApps()
+    }
+
+    private func removeExcludedApp(at index: Int) {
+        guard index < excludedApps.count else { return }
+        excludedApps.remove(at: index)
+        saveExcludedApps()
+    }
+
+    private func resetExcludedToDefaults() {
+        excludedApps = defaultExcludedApps.map { bundleID in
+            AppEntry(bundleID: bundleID, icon: AppIconCache.shared.icon(for: bundleID))
+        }
+        saveExcludedApps()
+    }
+
     private func loadChromiumApps() {
         let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customChromiumApps) ?? []
         let allBundleIDs = defaultChromiumApps + custom
@@ -327,6 +410,8 @@ struct AppsPane: View {
         let runningApps = NSWorkspace.shared.runningApplications
         let currentList: [AppEntry]
         switch pickerMode {
+        case .excluded:
+            currentList = excludedApps
         case .compound:
             currentList = compoundApps
         case .chromium:
