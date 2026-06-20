@@ -23,7 +23,7 @@ Bộ gõ tiếng Việt cho macOS, sử dụng engine `uvie-rs` viết bằng Ru
 
 ## Cài đặt
 
-1. Tải `UVieKey-*-universal.dmg` từ [Releases](https://github.com/thuupx/uvie-rs/releases).
+1. Tải `UVieKey-*-universal.dmg` từ [Releases](https://github.com/thuupx/UVieKey/releases).
 2. Mở DMG, kéo `UVieKey.app` vào thư mục `Applications`.
 3. Mở app, cấp quyền **Accessibility** trong **System Settings → Privacy & Security → Accessibility**.
 4. Icon `uvie` sẽ xuất hiện trên menu bar.
@@ -49,24 +49,22 @@ Bộ gõ tiếng Việt cho macOS, sử dụng engine `uvie-rs` viết bằng Ru
 Requirements: Rust toolchain, Swift 5.9+, macOS SDK.
 
 ```bash
-# Build Rust static library + Swift app
+# Build Swift app (lần đầu sẽ tự động fetch uvie-rs prebuilt library)
 ./build.sh
 
 # Chạy
-../.build/debug/UVieKey
+.build/debug/UVieKey
 ```
+
+> Build từ source Rust local: set `UVIE_RS_DIR` trước khi chạy `build.sh`:
+> ```bash
+> UVIE_RS_DIR=/path/to/uvie-rs ./build.sh
+> ```
 
 Build release + package:
 
 ```bash
-# Build Rust lib (universal)
-cd ..
-cargo build --release --target aarch64-apple-darwin
-cargo build --release --target x86_64-apple-darwin
-lipo -create target/aarch64-apple-darwin/release/libuvie.a target/x86_64-apple-darwin/release/libuvie.a -output target/release/libuvie.a
-
 # Build Swift app (universal)
-cd UVieKey
 swift build --configuration release --arch arm64
 swift build --configuration release --arch x86_64
 lipo -create .build/arm64-apple-macosx/release/UVieKey .build/x86_64-apple-macosx/release/UVieKey -output .build/release/UVieKey
@@ -100,7 +98,7 @@ Secrets cần thiết:
 
 UVieKey sử dụng engine `uvie-rs` — Rust library, `no_std`/`no-alloc` compatible, zero deps.
 
-Xem chi tiết kiến trúc và benchmark trong [README root](../README.md) và [`../src/ARCHITECT.md`](../src/ARCHITECT.md).
+Xem chi tiết kiến trúc và benchmark trong [README của uvie-rs](https://github.com/thuupx/uvie-rs).
 
 ## License
 
