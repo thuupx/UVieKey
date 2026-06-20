@@ -1,6 +1,6 @@
 # UVieKey
 
-Bộ gõ tiếng Việt cho macOS, sử dụng engine `uvie-rs` viết bằng Rust.
+Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engine `uvie-rs`.
 
 ## Tính năng
 
