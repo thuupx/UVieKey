@@ -449,8 +449,14 @@ final class EventTap: ObservableObject {
                     // Step 2: Add +1 backspace for compound apps
                     let adjustedBs = bs + 1
                     if isChromium {
-                        // Chromium: Shift+Left select then overwrite
+                        // Chromium: Shift+Left select then overwrite.
+                        // If there is no replacement text, the selection stays
+                        // highlighted without being deleted, so send an extra
+                        // backspace to remove the selected characters.
                         applySelectionBackspaces(adjustedBs)
+                        if out.isEmpty {
+                            applyBackspaces(1)
+                        }
                     } else {
                         // Safari/Notes: normal backspace
                         applyBackspaces(adjustedBs)
@@ -757,13 +763,18 @@ final class EventTap: ObservableObject {
     private func applyBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
         perfNoteEvent(2 * count)
-        for _ in 0..<count {
+        for i in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: true)
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             down?.post(tap: .cghidEventTap)
             let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: false)
             up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             up?.post(tap: .cghidEventTap)
+            // Chromium needs a tiny delay between synthetic events in release builds,
+            // otherwise the OS may deliver them too fast for the browser to process.
+            if isChromium && i < count - 1 {
+                Thread.sleep(forTimeInterval: 0.015)
+            }
         }
     }
 
@@ -771,7 +782,7 @@ final class EventTap: ObservableObject {
     private func applySelectionBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
         perfNoteEvent(2 * count)
-        for _ in 0..<count {
+        for i in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 123, keyDown: true)
             down?.flags = .maskShift
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
@@ -780,6 +791,15 @@ final class EventTap: ObservableObject {
             up?.flags = .maskShift
             up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             up?.post(tap: .cghidEventTap)
+            // Let Chromium catch up before the next selection event or the overwrite.
+            if i < count - 1 {
+                Thread.sleep(forTimeInterval: 0.005)
+            }
+        }
+        // Extra delay before the overwrite text is posted; release builds can
+        // deliver the events so fast that Chromium hasn't applied the selection yet.
+        if isChromium {
+            Thread.sleep(forTimeInterval: 0.015)
         }
     }
 

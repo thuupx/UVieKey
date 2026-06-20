@@ -312,7 +312,7 @@ struct ClipboardPane: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Số mục tối đa")
                                     .font(.system(size: 13, weight: .medium))
-                                Text("Giới hạn số lượng nội dung được lưu (1–99)")
+                                Text("Giới hạn số lượng nội dung được lưu (1-99)")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                             }
