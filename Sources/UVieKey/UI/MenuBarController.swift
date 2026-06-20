@@ -100,7 +100,7 @@ final class MenuBarController: ObservableObject {
 
     private func makeIcon() -> NSImage {
         let label = isVietnamese ? "V" : "E"
-        let color = isVietnamese ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
+        let color = isVietnamese ? NSColor(red: 0.808, green: 0.255, blue: 0.169, alpha: 1.0) : NSColor.secondaryLabelColor
         let sz = NSSize(width: 20, height: 18)
         let img = NSImage(size: sz, flipped: false) { rect in
             let font = NSFont.systemFont(ofSize: 18, weight: .bold)
