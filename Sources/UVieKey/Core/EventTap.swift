@@ -250,6 +250,7 @@ final class EventTap: ObservableObject {
         let method = defaults.string(forKey: DefaultsKey.inputMethod) ?? "telex"
         _engine.setInputMethod(method == "vni" ? .vni : .telex)
         _engine.setModernOrthography(defaults.bool(forKey: DefaultsKey.modernOrthography))
+        _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
     }
 
     /// Observe runtime setting changes so toggling Quick Telex, Modern

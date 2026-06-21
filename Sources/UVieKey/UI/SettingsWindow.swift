@@ -28,7 +28,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             )
             w.title = "UVieKey"
             w.titlebarAppearsTransparent = true
-            w.isMovableByWindowBackground = true
+            // Default: only the title bar can move the window. Setting this to
+            // true lets the user drag from anywhere inside the window background.
+            w.isMovableByWindowBackground = false
             w.isReleasedWhenClosed = false
             w.delegate = self
 
@@ -536,6 +538,7 @@ struct ClipboardPane: View {
 struct KeyboardPane: View {
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
     @AppStorage(DefaultsKey.inputMethodHotkeyEnabled) private var hotkeyEnabled: Bool = true
+    @AppStorage(DefaultsKey.relaxedCoda) private var relaxedCoda: Bool = false
 
     var body: some View {
         PaneScroll {
@@ -545,6 +548,15 @@ struct KeyboardPane: View {
                                 "Fn để chuyển nhanh",
                                 "Nhấn phím Fn để bật / tắt Tiếng Việt",
                                 $hotkeyEnabled)
+                }
+            }
+
+            PaneSection("Vần cuối") {
+                SettingsCard {
+                    SToggleRow("g.circle",
+                                "Cho phép g thay cho ng",
+                                "Bật để gõ đặg, đág thay vì đặng, đáng. Cách viết tắt tiện lợi khi gõ nhanh.",
+                                $relaxedCoda)
                 }
             }
 
