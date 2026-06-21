@@ -146,22 +146,11 @@ jobs:
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
           DMG_NAME="UVieKey-${VERSION}-universal.dmg"
-
-          # Create staging directory for DMG contents
-          STAGING="dmg_staging"
-          mkdir -p "$STAGING"
-
-          # Copy app bundle
-          cp -R UVieKey.app "$STAGING/"
-
-          # Create symbolic link to Applications
-          ln -s /Applications "$STAGING/Applications"
-
-          # Create dmg using hdiutil
-          hdiutil create \
-            -volname "UVieKey ${VERSION}" \
-            -srcfolder "$STAGING" \
-            -ov -format UDZO \
+          python3 -m pip install dmgbuild
+          python3 -m dmgbuild \
+            -s scripts/dmgbuild_settings.py \
+            -D app=UVieKey.app \
+            "UVieKey ${VERSION}" \
             "$DMG_NAME"
 
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
