@@ -3,6 +3,7 @@ import Foundation
 enum DefaultsKey {
     static let inputMethod = "InputMethod"
     static let modernOrthography = "ModernOrthography"
+    static let relaxedCoda = "RelaxedCoda"
     static let checkSpelling = "CheckSpelling"
     static let smartSwitchKey = "SmartSwitchKey"
     static let uppercaseFirstChar = "UppercaseFirstChar"

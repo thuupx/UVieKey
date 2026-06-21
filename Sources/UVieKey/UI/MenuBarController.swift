@@ -157,6 +157,7 @@ struct MenuBarPopoverView: View {
     @AppStorage(DefaultsKey.smartSwitchKey)     private var smartSwitchKey: Bool = false
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
     @AppStorage(DefaultsKey.macroEnabled)       private var macroEnabled: Bool = false
+    @AppStorage(DefaultsKey.relaxedCoda)        private var relaxedCoda: Bool = true
     @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = false
     @AppStorage(DefaultsKey.keepPopoverOpen)    private var keepPopoverOpen: Bool = false
     @StateObject private var layoutMonitor = KeyboardLayoutMonitor.shared
@@ -285,7 +286,8 @@ struct MenuBarPopoverView: View {
             toggleRow("brain","Nhớ ngôn ngữ từng app",      $smartSwitchKey)
             toggleRow("textformat",                  "Viết hoa đầu câu",           $uppercaseFirstChar)
             rowLabel("GÕ NHANH")
-            toggleRow("doc.text",                    "Macro văn bản",              $macroEnabled)
+            toggleRow("g.circle",                    "g thay cho ng",            $relaxedCoda)
+            toggleRow("doc.text",                    "Macro văn bản",            $macroEnabled)
 
             rowLabel("MENUBAR")
             toggleRow("pin",                           "Giữ mở",                    $keepPopoverOpen)

@@ -17,7 +17,7 @@ extension Notification.Name {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
-    private let menuBar = MenuBarController()
+    private var menuBar: MenuBarController?
     private let memory = MemoryManager()
     private lazy var inputMethodManager = InputMethodManager(memory: memory)
     private lazy var eventTap = EventTap(inputMethodManager: inputMethodManager)
@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             DefaultsKey.uppercaseFirstChar: false,
             DefaultsKey.macroEnabled:       false,
             DefaultsKey.modernOrthography:  true,
+            DefaultsKey.relaxedCoda:        false,
             DefaultsKey.inputMethod:        "telex",
             DefaultsKey.clipboardHistoryEnabled: true,
             DefaultsKey.clipboardMaxEntries: 10,
@@ -47,7 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         ClipboardManager.shared.startObserving()
 
-        menuBar.setEventTap(eventTap)
+        menuBar = MenuBarController()
+        menuBar?.setEventTap(eventTap)
 
         NotificationCenter.default.addObserver(
             self,
