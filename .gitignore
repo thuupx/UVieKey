@@ -1,4 +1,5 @@
 .idea
+.venv
 .DS_Store
 .build
 .swiftpm
