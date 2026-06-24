@@ -158,8 +158,8 @@ final class GlobalHotkeyManager: ObservableObject {
     }
 
     /// Enables or disables the hotkey without clearing the stored binding.
+    /// Does NOT write to UserDefaults — the caller (@AppStorage) already did.
     func setEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: DefaultsKey.customToggleEnabled)
         if enabled, let b = binding, b.isValid {
             register(b)
         } else {
@@ -167,11 +167,11 @@ final class GlobalHotkeyManager: ObservableObject {
         }
     }
 
-    /// Clears the stored binding and unregisters.
+    /// Clears the stored binding and unregisters. Keeps the feature enabled
+    /// so the user can record a new shortcut without re-toggling.
     func clearBinding() {
         UserDefaults.standard.set(0, forKey: DefaultsKey.customToggleKeyCode)
         UserDefaults.standard.set(0, forKey: DefaultsKey.customToggleModifiers)
-        UserDefaults.standard.set(false, forKey: DefaultsKey.customToggleEnabled)
         binding = nil
         unregister()
     }
@@ -222,7 +222,7 @@ final class GlobalHotkeyManager: ObservableObject {
                                  eventKind: UInt32(kEventHotKeyPressed))
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
-        InstallEventHandler(
+        let status = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, _, userData -> OSStatus in
                 guard let userData else { return noErr }
@@ -238,7 +238,11 @@ final class GlobalHotkeyManager: ObservableObject {
             &eventHandler
         )
 
-        GlobalHotkeyManager.sharedEventHandlerInstalled = true
+        if status == noErr {
+            GlobalHotkeyManager.sharedEventHandlerInstalled = true
+        } else {
+            NSLog("[UVieKey] GlobalHotkey: InstallEventHandler failed with \(status)")
+        }
     }
 }
 

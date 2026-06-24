@@ -21,7 +21,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // Recreate window if it was closed or invalidated
         if window == nil || window?.isVisible == false {
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                 styleMask: [.titled, .closable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -267,7 +267,7 @@ struct GeneralPane: View {
                             Text("Khởi động cùng macOS")
                                 .font(.system(size: 13, weight: .medium))
                             Text(launchAtLogin.isAvailable
-                                 ? "Tự động chạy UVieKey khi đăng nhập"
+                                 ? "Tự động chạy khi đăng nhập"
                                  : "Tính năng không khả dụng")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -308,7 +308,7 @@ struct GeneralPane: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Phím tắt tuỳ chỉnh")
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Phím tắt toàn hệ thống để chuyển Tiếng Việt / English")
+                            Text("Phím tắt toàn hệ thống để chuyển ngôn ngữ")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -329,13 +329,8 @@ struct GeneralPane: View {
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 24, alignment: .center)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Lưu phím tắt")
-                                    .font(.system(size: 13, weight: .medium))
-                                Text("Nhấn nút bên cạnh rồi bấm tổ hợp phím (cần ít nhất 1 phím sửa đổi)")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text("Lưu phím tắt")
+                                .font(.system(size: 13, weight: .medium))
                             Spacer()
                             ShortcutRecorder()
                         }

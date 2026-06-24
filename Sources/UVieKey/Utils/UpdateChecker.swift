@@ -25,6 +25,10 @@ final class UpdateChecker: ObservableObject {
 
     private init() {}
 
+    deinit {
+        timer?.invalidate()
+    }
+
     /// True when `latestVersion` is strictly newer than the running app version.
     var hasUpdate: Bool {
         guard let latest = latestVersion else { return false }
