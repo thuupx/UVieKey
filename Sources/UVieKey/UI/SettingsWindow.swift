@@ -763,11 +763,11 @@ struct AboutPane: View {
             Divider()
 
             HStack(spacing: 0) {
-                aboutLink("link",                  "GitHub",     "https://github.com/thuupx/uvie-rs")
+                aboutLink("link",                  "GitHub",     "https://github.com/thuupx/UVieKey")
                 Divider().frame(height: 20)
-                aboutLink("exclamationmark.bubble", "Báo lỗi",   "https://github.com/thuupx/uvie-rs/issues")
+                aboutLink("exclamationmark.bubble", "Báo lỗi",   "https://github.com/thuupx/UVieKey/issues")
                 Divider().frame(height: 20)
-                aboutLink("arrow.down.circle",     "Cập nhật",   "https://github.com/thuupx/uvie-rs/releases")
+                aboutLink("arrow.down.circle",     "Cập nhật",   "https://github.com/thuupx/UVieKey/releases")
             }
             .padding(.vertical, 10)
         }
