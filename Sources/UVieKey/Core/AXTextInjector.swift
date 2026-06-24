@@ -69,7 +69,8 @@ final class AXTextInjector {
     func commit() {
         // Check for macro expansion first
         if macroManager.isEnabled() {
-            let currentText = engine.currentOutput()
+            // Include V-C-V auto-committed prefix + composing for macro matching.
+            let currentText = engine.committedText() + engine.currentOutput()
             if let expansion = macroManager.findExpansion(for: currentText) {
                 guard let element = getFocusedTextElement() else { return }
                 guard let current = getTextValue(element) else { return }
