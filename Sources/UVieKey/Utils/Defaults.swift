@@ -22,4 +22,7 @@ enum DefaultsKey {
     static let customCompoundApps = "CustomCompoundApps"
     static let customChromiumApps = "CustomChromiumApps"
     static let customExcludedApps = "CustomExcludedApps"
+    static let customToggleEnabled = "CustomToggleEnabled"
+    static let customToggleKeyCode = "CustomToggleKeyCode"
+    static let customToggleModifiers = "CustomToggleModifiers"
 }

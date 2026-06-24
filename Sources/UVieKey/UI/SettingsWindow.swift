@@ -21,7 +21,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // Recreate window if it was closed or invalidated
         if window == nil || window?.isVisible == false {
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 660, height: 500),
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                 styleMask: [.titled, .closable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -95,6 +95,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @State private var tab: SettingsTab = .general
+    @StateObject private var updateChecker = UpdateChecker.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -102,7 +103,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Spacer().frame(height: 20)  // below titlebar
                 ForEach(SettingsTab.allCases) { t in
-                    SidebarRow(tab: t, selected: tab == t) { tab = t }
+                    SidebarRow(
+                        tab: t,
+                        selected: tab == t,
+                        showUpdateBadge: t == .about && updateChecker.hasUpdate,
+                        onSelect: { tab = t }
+                    )
                 }
                 Spacer()
             }
@@ -135,6 +141,7 @@ struct SettingsView: View {
 private struct SidebarRow: View {
     let tab: SettingsTab
     let selected: Bool
+    var showUpdateBadge: Bool = false
     let onSelect: () -> Void
 
     var body: some View {
@@ -148,6 +155,11 @@ private struct SidebarRow: View {
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected ? .white : .primary)
                 Spacer()
+                if showUpdateBadge {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 7, height: 7)
+                }
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
@@ -169,6 +181,10 @@ struct GeneralPane: View {
     @AppStorage(DefaultsKey.smartSwitchKey) private var smartSwitchKey: Bool = false
     @AppStorage(DefaultsKey.engineEnabled)  private var engineEnabled: Bool = true
     @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = false
+    @AppStorage(DefaultsKey.inputMethodHotkeyEnabled) private var hotkeyEnabled: Bool = true
+    @AppStorage(DefaultsKey.customToggleEnabled) private var customToggleEnabled: Bool = false
+    @StateObject private var launchAtLogin = LaunchAtLoginManager.shared
+    @StateObject private var hotkeyManager = GlobalHotkeyManager.shared
 
     private var isVietnameseMode: Binding<Bool> {
         Binding(
@@ -219,11 +235,6 @@ struct GeneralPane: View {
                         imOption("VNI",   "vni")
                     }
                     .padding(12)
-
-                    SCardDivider()
-                    imRow("Telex", "aa→ă  aw→â  ow→ơ  uw→ư  dd→đ\ns→sắc  f→huyền  r→hỏi  x→ngã  j→nặng", tag: "telex")
-                    SCardDivider()
-                    imRow("VNI",   "a7→ă  a6→â  o7→ơ  u7→ư  d9→đ\na1→á  a2→à  a3→ả  a4→ã  a5→ạ",      tag: "vni")
                 }
             }
 
@@ -242,6 +253,93 @@ struct GeneralPane: View {
                                 "Tự động tắt khi dùng layout khác",
                                 "Bỏ qua engine khi keyboard không phải Latin layout",
                                 $autoDisableOnNonLatinLayout)
+                }
+            }
+
+            PaneSection("Hệ thống") {
+                SettingsCard {
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "power")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, alignment: .center)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Khởi động cùng macOS")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(launchAtLogin.isAvailable
+                                 ? "Tự động chạy khi đăng nhập"
+                                 : "Tính năng không khả dụng")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $launchAtLogin.isEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .disabled(!launchAtLogin.isAvailable)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if launchAtLogin.isAvailable {
+                            launchAtLogin.isEnabled.toggle()
+                        }
+                    }
+                }
+            }
+
+            PaneSection("Phím tắt chuyển ngôn ngữ") {
+                SettingsCard {
+                    // Fn toggle (existing)
+                    SToggleRow("command",
+                                "Phím Fn để chuyển nhanh",
+                                "Nhấn phím Fn để bật / tắt Tiếng Việt",
+                                $hotkeyEnabled)
+
+                    SCardDivider()
+
+                    // Custom global shortcut
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, alignment: .center)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Phím tắt tuỳ chỉnh")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Phím tắt toàn hệ thống để chuyển ngôn ngữ")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $customToggleEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                    .onTapGesture { customToggleEnabled.toggle() }
+
+                    if customToggleEnabled {
+                        SCardDivider()
+                        HStack(spacing: 12) {
+                            Image(systemName: "record.circle")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, alignment: .center)
+                            Text("Lưu phím tắt")
+                                .font(.system(size: 13, weight: .medium))
+                            Spacer()
+                            ShortcutRecorder()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                    }
+                }
+                .onChange(of: customToggleEnabled) { newValue in
+                    hotkeyManager.setEnabled(newValue)
                 }
             }
         }
@@ -537,20 +635,10 @@ struct ClipboardPane: View {
 
 struct KeyboardPane: View {
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
-    @AppStorage(DefaultsKey.inputMethodHotkeyEnabled) private var hotkeyEnabled: Bool = true
     @AppStorage(DefaultsKey.relaxedCoda) private var relaxedCoda: Bool = false
 
     var body: some View {
         PaneScroll {
-            PaneSection("Phím tắt") {
-                SettingsCard {
-                    SToggleRow("command",
-                                "Fn để chuyển nhanh",
-                                "Nhấn phím Fn để bật / tắt Tiếng Việt",
-                                $hotkeyEnabled)
-                }
-            }
-
             PaneSection("Vần cuối") {
                 SettingsCard {
                     SToggleRow("g.circle",
@@ -732,6 +820,8 @@ struct AdvancedPane: View {
 // MARK: - About Pane
 
 struct AboutPane: View {
+    @StateObject private var updateChecker = UpdateChecker.shared
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -749,6 +839,18 @@ struct AboutPane: View {
                     Text("Phiên bản \(AppVersion.fullVersion)")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
+
+                    // Changelog link
+                    Link(destination: URL(string: "https://github.com/thuupx/UVieKey/releases")!) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text")
+                                .font(.system(size: 10))
+                            Text("Xem changelog")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 Text("Bộ gõ Tiếng Việt nhanh, nhẹ và chính xác cho macOS.\nPowered by uvie-rs - zero-cost Rust engine.")
@@ -757,17 +859,35 @@ struct AboutPane: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
                     .frame(maxWidth: 360)
+
+                // Manual update download button
+                if updateChecker.hasUpdate, let url = updateChecker.latestReleaseURL {
+                    Link(destination: url) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Tải bản cập nhật v\(updateChecker.latestVersion ?? "")")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: 260)
+                }
             }
 
             Spacer()
             Divider()
 
             HStack(spacing: 0) {
-                aboutLink("link",                  "GitHub",     "https://github.com/thuupx/uvie-rs")
+                aboutLink("link",                  "GitHub",     "https://github.com/thuupx/UVieKey")
                 Divider().frame(height: 20)
-                aboutLink("exclamationmark.bubble", "Báo lỗi",   "https://github.com/thuupx/uvie-rs/issues")
+                aboutLink("exclamationmark.bubble", "Báo lỗi",   "https://github.com/thuupx/UVieKey/issues")
                 Divider().frame(height: 20)
-                aboutLink("arrow.down.circle",     "Cập nhật",   "https://github.com/thuupx/uvie-rs/releases")
+                aboutLink("arrow.down.circle",     "Cập nhật",   "https://github.com/thuupx/UVieKey/releases")
             }
             .padding(.vertical, 10)
         }
