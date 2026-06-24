@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var inputMethodManager = InputMethodManager(memory: memory)
     private lazy var eventTap = EventTap(inputMethodManager: inputMethodManager)
     private weak var onboardingWindow: NSWindow?
+    private let updateChecker = UpdateChecker.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // Hide dock icon
@@ -64,6 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         } else {
             showOnboarding()
         }
+
+        // Start periodic update checks (every 2h, fires once immediately).
+        updateChecker.start()
     }
 
     @objc private func onOnboardingCompleted() {

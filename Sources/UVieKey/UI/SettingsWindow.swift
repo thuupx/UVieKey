@@ -95,6 +95,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @State private var tab: SettingsTab = .general
+    @StateObject private var updateChecker = UpdateChecker.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -102,7 +103,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Spacer().frame(height: 20)  // below titlebar
                 ForEach(SettingsTab.allCases) { t in
-                    SidebarRow(tab: t, selected: tab == t) { tab = t }
+                    SidebarRow(
+                        tab: t,
+                        selected: tab == t,
+                        showUpdateBadge: t == .about && updateChecker.hasUpdate,
+                        onSelect: { tab = t }
+                    )
                 }
                 Spacer()
             }
@@ -135,6 +141,7 @@ struct SettingsView: View {
 private struct SidebarRow: View {
     let tab: SettingsTab
     let selected: Bool
+    var showUpdateBadge: Bool = false
     let onSelect: () -> Void
 
     var body: some View {
@@ -148,6 +155,11 @@ private struct SidebarRow: View {
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected ? .white : .primary)
                 Spacer()
+                if showUpdateBadge {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 7, height: 7)
+                }
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
@@ -732,6 +744,8 @@ struct AdvancedPane: View {
 // MARK: - About Pane
 
 struct AboutPane: View {
+    @StateObject private var updateChecker = UpdateChecker.shared
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -749,6 +763,18 @@ struct AboutPane: View {
                     Text("Phiên bản \(AppVersion.fullVersion)")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
+
+                    // Changelog link
+                    Link(destination: URL(string: "https://github.com/thuupx/UVieKey/releases")!) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text")
+                                .font(.system(size: 10))
+                            Text("Xem changelog")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 Text("Bộ gõ Tiếng Việt nhanh, nhẹ và chính xác cho macOS.\nPowered by uvie-rs - zero-cost Rust engine.")
@@ -757,6 +783,24 @@ struct AboutPane: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
                     .frame(maxWidth: 360)
+
+                // Manual update download button
+                if updateChecker.hasUpdate, let url = updateChecker.latestReleaseURL {
+                    Link(destination: url) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Tải bản cập nhật v\(updateChecker.latestVersion ?? "")")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: 260)
+                }
             }
 
             Spacer()
