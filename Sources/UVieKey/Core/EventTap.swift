@@ -11,6 +11,17 @@ private let defaultCompoundApps: Set<String> = [
     "com.apple.TextEdit",
     "com.apple.mail",
     "com.apple.iWork",
+    // Chromium browsers: the omnibox autocomplete swallows synthetic backspaces,
+    // causing duplicate characters. The empty-character sentinel dismisses the
+    // dropdown so backspaces land correctly.
+    "com.google.Chrome",
+    "org.chromium.Chromium",
+    "com.brave.Browser",
+    "com.microsoft.edgemac",
+    "com.vivaldi.Vivaldi",
+    "company.thebrowser.Browser", // Arc
+    "ai.perplexity.comet", // Comet
+    "com.openai.atlas", // ChatGPT Atlas
 ]
 
 /// Get compound apps from UserDefaults (defaults + custom)
@@ -45,7 +56,16 @@ private func getExcludedApps() -> Set<String> {
 
 /// Default Chromium browsers that need Shift+Left Arrow selection
 /// instead of plain backspace (avoids duplicate chars).
-private let defaultChromiumBrowsers: Set<String> = []
+private let defaultChromiumBrowsers: Set<String> = [
+    "com.google.Chrome",
+    "org.chromium.Chromium",
+    "com.brave.Browser",
+    "com.microsoft.edgemac",
+    "com.vivaldi.Vivaldi",
+    "company.thebrowser.Browser", // Arc
+    "ai.perplexity.comet", // Comet
+    "com.openai.atlas", // ChatGPT Atlas
+]
 
 /// Get Chromium browsers from UserDefaults (defaults + custom)
 private func getChromiumBrowsers() -> Set<String> {
@@ -107,7 +127,6 @@ final class EventTap: ObservableObject {
     private var isAtSentenceStart = true
 
     /// App switch detection: prevent ghost characters from previous app
-    private var previousBundleID: String = ""
     private var engineResetObserver: NSObjectProtocol?
 
     /// Performance logging for keystroke latency (only logs slow / high-event paths).
@@ -207,7 +226,14 @@ final class EventTap: ObservableObject {
     // MARK: - Helpers
     
     private func getCurrentText() -> String {
-        return _engine.currentOutput()
+        // Macro matching must consider the full on-screen text: the V-C-V
+        // auto-committed prefix (diff_committed) plus the current composing
+        // portion. Using currentOutput() alone misses the committed prefix,
+        // so a macro typed across a V-C-V split (e.g. "neebo" → "nê" + "bo")
+        // would only match against "bo" instead of "nêbo".
+        let committed = _engine.committedText()
+        let composing = _engine.currentOutput()
+        return committed + composing
     }
 
     // MARK: - Performance Logging
@@ -382,6 +408,17 @@ final class EventTap: ObservableObject {
                              !flags.contains(.maskSecondaryFn)
         let isOptionBackspace = isAlternateOnly && keyCode == 51
 
+        // Cmd+Backspace / Ctrl+Backspace delete to line start (or whole line) at the
+        // OS level, which the engine cannot observe. If we pass the event through
+        // without resetting, the engine keeps stale composing state and the next
+        // keystroke diffs against text that no longer matches the screen → ghost
+        // characters. Reset so the engine matches the now-empty (or truncated)
+        // screen, then let the OS perform the deletion natively.
+        if type == .keyDown && keyCode == 51
+            && (flags.contains(.maskCommand) || flags.contains(.maskControl)) {
+            _engine.reset()
+        }
+
         if (flags.contains(.maskCommand) || flags.contains(.maskControl) ||
            flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn)) && !isOptionBackspace {
             return Unmanaged.passRetained(event)
@@ -419,12 +456,11 @@ final class EventTap: ObservableObject {
 
             // Option+Backspace: let OS handle word deletion, just reset engine state
             if isOptionBackspace {
-                // Simply reset the engine without sending any backspaces ourselves.
-                // The OS will handle the word deletion natively.
-                // We only need to ensure our internal state is cleared.
-                if _engine.isComposing {
-                    _engine.reset()
-                }
+                // The OS deletes a whole word natively, which the engine cannot
+                // observe. Reset unconditionally (not only when composing) so any
+                // V-C-V auto-committed text is also dropped — otherwise the next
+                // keystroke diffs against stale state and leaks ghost characters.
+                _engine.reset()
                 // Pass through to let OS handle the word deletion
                 perfEnd("backspace-option", keyCode: keyCode, app: app)
                 return Unmanaged.passRetained(event)
@@ -449,23 +485,7 @@ final class EventTap: ObservableObject {
 
             if bs > 0 {
                 if isCompoundApp {
-                    // Step 1: invalidate autocomplete dropdown with empty char
-                    sendEmptyCharacter()
-                    // Step 2: Add +1 backspace for compound apps
-                    let adjustedBs = bs + 1
-                    if isChromium {
-                        // Chromium: Shift+Left select then overwrite.
-                        // If there is no replacement text, the selection stays
-                        // highlighted without being deleted, so send an extra
-                        // backspace to remove the selected characters.
-                        applySelectionBackspaces(adjustedBs)
-                        if out.isEmpty {
-                            applyBackspaces(1)
-                        }
-                    } else {
-                        // Safari/Notes: normal backspace
-                        applyBackspaces(adjustedBs)
-                    }
+                    applyCompoundBackspaces(bs: bs, out: out)
                 } else {
                     applyBackspaces(bs)
                 }
@@ -495,24 +515,18 @@ final class EventTap: ObservableObject {
                         
                         if bs > 0 {
                             if isCompoundApp {
-                                sendEmptyCharacter()
-                                let adjustedBs = bs + 1
-                                if isChromium {
-                                    applySelectionBackspaces(adjustedBs)
-                                } else {
-                                    applyBackspaces(adjustedBs)
-                                }
+                                applyCompoundBackspaces(bs: bs, out: "")
                             } else {
                                 applyBackspaces(bs)
                             }
                         }
-                        
+
                         // Additional backspace if engine didn't catch all
                         if abbreviationLength > bs {
                             let remaining = abbreviationLength - bs
                             applyBackspaces(remaining)
                         }
-                        
+
                         // Insert the expansion
                         postText(expansion)
                         _engine.reset()
@@ -520,17 +534,11 @@ final class EventTap: ObservableObject {
                         return nil  // Consume the space event
                     }
                 }
-                
+
                 let (bs, out) = _engine.commit()
                 if bs > 0 {
                     if isCompoundApp {
-                        sendEmptyCharacter()
-                        let adjustedBs = bs + 1
-                        if isChromium {
-                            applySelectionBackspaces(adjustedBs)
-                        } else {
-                            applyBackspaces(adjustedBs)
-                        }
+                        applyCompoundBackspaces(bs: bs, out: out)
                     } else {
                         applyBackspaces(bs)
                     }
@@ -564,13 +572,7 @@ final class EventTap: ObservableObject {
 
                         if bs > 0 {
                             if isCompoundApp {
-                                sendEmptyCharacter()
-                                let adjustedBs = bs + 1
-                                if isChromium {
-                                    applySelectionBackspaces(adjustedBs)
-                                } else {
-                                    applyBackspaces(adjustedBs)
-                                }
+                                applyCompoundBackspaces(bs: bs, out: "")
                             } else {
                                 applyBackspaces(bs)
                             }
@@ -597,13 +599,7 @@ final class EventTap: ObservableObject {
                 let (bs, out) = _engine.commit()
                 if bs > 0 {
                     if isCompoundApp {
-                        sendEmptyCharacter()
-                        let adjustedBs = bs + 1
-                        if isChromium {
-                            applySelectionBackspaces(adjustedBs)
-                        } else {
-                            applyBackspaces(adjustedBs)
-                        }
+                        applyCompoundBackspaces(bs: bs, out: out)
                     } else {
                         applyBackspaces(bs)
                     }
@@ -643,13 +639,7 @@ final class EventTap: ObservableObject {
         updateSentenceStartState(after: firstChar)
         if bs > 0 {
             if isCompoundApp {
-                sendEmptyCharacter()
-                let adjustedBs = bs + 1
-                if isChromium {
-                    applySelectionBackspaces(adjustedBs)
-                } else {
-                    applyBackspaces(adjustedBs)
-                }
+                applyCompoundBackspaces(bs: bs, out: out)
             } else {
                 applyBackspaces(bs)
             }
@@ -764,6 +754,34 @@ final class EventTap: ObservableObject {
 
     // MARK: - Synthetic Output
 
+    /// Send backspaces for compound apps (Safari, Notes, Chrome, Comet, Atlas, etc.).
+    ///
+    /// Strategy:
+    /// - Send an empty-char sentinel (U+202F) to dismiss the autocomplete dropdown
+    ///   when bs > 1 (multi-char replace / V-C-V split). For bs == 1 the dropdown
+    ///   hasn't rendered at normal typing speed, so the sentinel is skipped.
+    /// - For Chromium browsers (Chrome, Comet, Atlas, Brave, Edge, Arc, Vivaldi):
+    ///   the omnibox autocomplete swallows synthetic backspaces when there is
+    ///   replacement text, causing duplicate characters (e.g. "tow" → "toơ"
+    ///   instead of "tơ"). Shift+Left selection + overwrite avoids this because
+    ///   the selection is replaced atomically by the subsequent postText. We
+    ///   only use selection when `out` is non-empty (replace case); pure
+    ///   deletions (out empty) use plain backspaces which work fine.
+    private func applyCompoundBackspaces(bs: Int, out: String) {
+        let needsEmptyChar = bs > 1
+        if needsEmptyChar {
+            sendEmptyCharacter()
+        }
+        let adjustedBs = bs + (needsEmptyChar ? 1 : 0)
+        if isChromium && !out.isEmpty {
+            // Chromium omnibox replace: select then overwrite to avoid dup.
+            applySelectionBackspaces(adjustedBs)
+        } else {
+            // Non-Chromium or pure deletion: plain backspaces.
+            applyBackspaces(adjustedBs)
+        }
+    }
+
     /// Standard backspaces.
     private func applyBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
@@ -811,16 +829,16 @@ final class EventTap: ObservableObject {
 
     private func postText(_ string: String) {
         guard let eventSource, !string.isEmpty else { return }
-        perfNoteEvent(2)
+        perfNoteEvent(1)
         let utf16 = Array(string.utf16)
         guard !utf16.isEmpty else { return }
+        // Only post keyDown — apps render text on keyDown; the synthetic keyUp
+        // is unnecessary for text input and doubles the event count, amplifying
+        // the backspace-then-insert flicker on every diff replace.
         let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: true)
         down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
         down?.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
         down?.post(tap: .cghidEventTap)
-        let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: false)
-        up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
-        up?.post(tap: .cghidEventTap)
     }
 
     // MARK: - Hotkey
