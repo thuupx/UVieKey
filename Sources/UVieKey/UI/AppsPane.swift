@@ -70,17 +70,10 @@ struct AppsPane: View {
 
     private let defaultExcludedApps: [String] = []
 
-    private let defaultCompoundApps: [String] = [
-        "com.apple.Safari",
-        "com.apple.Notes",
-        "com.apple.TextEdit",
-        "com.apple.mail",
-        "com.apple.iWork",
-        // Chromium browsers are intentionally excluded; they work correctly as
-        // regular apps. Adding them here caused backspace/delete issues.
-    ]
+    // Shared with EventTap.swift via AppDefaults — single source of truth.
+    private let defaultCompoundApps: [String] = Array(AppDefaults.compoundApps).sorted()
 
-    private let defaultChromiumApps: [String] = []
+    private let defaultChromiumApps: [String] = Array(AppDefaults.chromiumBrowsers).sorted()
 
     enum PickerMode {
         case excluded
@@ -229,7 +222,7 @@ struct AppsPane: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("Nếu trình duyệt Chromium (Chrome, Edge, Brave,...) không nhận được dấu câu đúng, hãy thêm nó vào danh sách này.")
+                        Text("Nếu bạn đang sử dụng trình duyệt Chromium-based, hãy thêm nó vào danh sách này.")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 

@@ -5,44 +5,20 @@ import Carbon
 
 /// Default apps that need empty-character sentinel before backspace (invalidate autocomplete).
 /// Matched by prefix OR exact bundle ID.
-private let defaultCompoundApps: Set<String> = [
-    "com.apple.Safari",
-    "com.apple.Notes",
-    "com.apple.TextEdit",
-    "com.apple.mail",
-    "com.apple.iWork",
-    // Chromium browsers: the omnibox autocomplete swallows synthetic backspaces,
-    // causing duplicate characters. The empty-character sentinel dismisses the
-    // dropdown so backspaces land correctly.
-    "com.google.Chrome",
-    "org.chromium.Chromium",
-    "com.brave.Browser",
-    "com.microsoft.edgemac",
-    "com.vivaldi.Vivaldi",
-    "company.thebrowser.Browser", // Arc
-    "ai.perplexity.comet", // Comet
-    "com.openai.atlas", // ChatGPT Atlas
-]
+private let defaultCompoundApps: Set<String> = AppDefaults.compoundApps
 
 /// Get compound apps from UserDefaults (defaults + custom)
 private func getCompoundApps() -> Set<String> {
     let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customCompoundApps) ?? []
-    return Set(defaultCompoundApps).union(Set(custom))
+    return defaultCompoundApps.union(Set(custom))
 }
 
 /// Apps that need Accessibility text injection instead of CGEventTap.
 /// Spotlight and some secure text fields don't accept synthetic key events.
-private let axApps: Set<String> = [
-    "com.apple.Spotlight",
-]
+private let axApps: Set<String> = AppDefaults.axApps
 
 /// Apps that should bypass IME entirely (system UI, lock screen, etc.)
-private let bypassApps: Set<String> = [
-    "com.apple.loginwindow",
-    "com.apple.securityagent",
-    "com.apple.ScreenSaver.Engine",
-    "com.apple.systemuiserver",
-]
+private let bypassApps: Set<String> = AppDefaults.bypassApps
 
 /// Apps the user explicitly wants to exclude from UVieKey processing.
 /// Events for these apps pass through untouched.
@@ -51,26 +27,17 @@ private let defaultExcludedApps: Set<String> = []
 /// Get excluded apps from UserDefaults (defaults + custom)
 private func getExcludedApps() -> Set<String> {
     let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customExcludedApps) ?? []
-    return Set(defaultExcludedApps).union(Set(custom))
+    return defaultExcludedApps.union(Set(custom))
 }
 
 /// Default Chromium browsers that need Shift+Left Arrow selection
 /// instead of plain backspace (avoids duplicate chars).
-private let defaultChromiumBrowsers: Set<String> = [
-    "com.google.Chrome",
-    "org.chromium.Chromium",
-    "com.brave.Browser",
-    "com.microsoft.edgemac",
-    "com.vivaldi.Vivaldi",
-    "company.thebrowser.Browser", // Arc
-    "ai.perplexity.comet", // Comet
-    "com.openai.atlas", // ChatGPT Atlas
-]
+private let defaultChromiumBrowsers: Set<String> = AppDefaults.chromiumBrowsers
 
 /// Get Chromium browsers from UserDefaults (defaults + custom)
 private func getChromiumBrowsers() -> Set<String> {
     let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customChromiumApps) ?? []
-    return Set(defaultChromiumBrowsers).union(Set(custom))
+    return defaultChromiumBrowsers.union(Set(custom))
 }
 
 private func checkIsCompoundApp(_ bundleID: String) -> Bool {

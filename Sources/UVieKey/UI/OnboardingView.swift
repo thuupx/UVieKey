@@ -69,7 +69,7 @@ struct OnboardingView: View {
             }
         }
         .padding(.horizontal, 48)
-        .padding(.bottom, 36)
+        .padding(.bottom, 48)
     }
 
     private func primaryButton(
@@ -108,47 +108,61 @@ struct OnboardingView: View {
 
 private struct WelcomeStep: View {
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 22) {
             // App icon
             Image(nsImage: appIconImage())
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 100, height: 100)
-                .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
+                .frame(width: 92, height: 92)
 
-            VStack(spacing: 12) {
-                Text("Chào mừng đến với UVieKey")
-                    .font(.system(size: 28, weight: .bold))
-
-                Text("Bộ gõ Tiếng Việt nhanh, nhẹ và chính xác cho macOS.\nPowered by uvie-rs - Rust engine zero-cost.")
-                    .font(.system(size: 14))
+            VStack(spacing: 6) {
+                Text("Chào mừng bạn đến với UVieKey")
+                    .font(.system(size: 26, weight: .bold))
+                Text("Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS.")
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
-                    .frame(maxWidth: 400)
+
+                Text("Powered by uvie-rs — zero-cost Rust engine.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(5)
+                    .frame(maxWidth: 360)
             }
 
-            // Feature pills
-            HStack(spacing: 10) {
-                featurePill("bolt",          "Siêu nhanh",    .orange)
-                featurePill("checkmark.seal","Chính xác",     .green)
-                featurePill("memorychip",    "Siêu nhẹ",      .blue)
+            // Feature highlights
+            SettingsCard {
+                infoRow("bolt",           "Siêu nhanh",    "Xử lý phím gõ tức thì với engine Rust")
+                SCardDivider()
+                infoRow("checkmark.seal", "Chính xác",     "Bảng mã Telex & VNI chuẩn xác")
+                SCardDivider()
+                infoRow("memorychip",     "Siêu nhẹ",      "Tiêu tốn tài nguyên gần như bằng không")
             }
+            .frame(maxWidth: 380)
         }
         .padding(.horizontal, 48)
     }
 
-    private func featurePill(_ icon: String, _ label: String, _ color: Color) -> some View {
-        HStack(spacing: 6) {
+    private func infoRow(_ icon: String, _ title: String, _ description: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundStyle(color)
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, alignment: .center)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(color.opacity(0.08), in: Capsule())
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
     }
 
     private func appIconImage() -> NSImage {
@@ -168,7 +182,7 @@ private struct WelcomeStep: View {
             return repoIconImage
         }
         // 3) Last resort blank image
-        return NSImage(size: NSSize(width: 100, height: 100))
+        return NSImage(size: NSSize(width: 92, height: 92))
     }
 }
 
@@ -179,73 +193,60 @@ private struct PermissionStep: View {
     let onRequest: () -> Void
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 22) {
             // Icon
-            ZStack {
-                Circle()
-                    .fill(isTrusted ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
-                    .frame(width: 96, height: 96)
-                Image(systemName: isTrusted ? "checkmark.shield.fill" : "lock.shield")
-                    .font(.system(size: 42))
-                    .foregroundStyle(isTrusted ? .green : .orange)
-            }
+            Image(systemName: isTrusted ? "checkmark.shield.fill" : "lock.shield")
+                .font(.system(size: 56, weight: .regular))
+                .foregroundStyle(isTrusted ? Color.accentColor : .secondary)
+                .frame(width: 92, height: 92)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 6) {
                 Text("Quyền Trợ năng")
-                    .font(.system(size: 26, weight: .bold))
-                Text("UVieKey cần quyền Accessibility để bắt và xử lý phím gõ.")
-                    .font(.system(size: 14))
+                    .font(.system(size: 22, weight: .bold))
+                Text("UVieKey cần quyền Trợ năng để bắt và xử lý phím gõ.")
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
+                    .frame(maxWidth: 360)
             }
 
             // Status card
-            VStack(spacing: 0) {
+            SettingsCard {
                 HStack(spacing: 12) {
                     Image(systemName: isTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(isTrusted ? .green : .orange)
+                        .font(.system(size: 18))
+                        .foregroundStyle(isTrusted ? Color.accentColor : .secondary)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(isTrusted ? "Đã cấp quyền thành công" : "Chưa cấp quyền")
                             .font(.system(size: 13, weight: .semibold))
                         Text(isTrusted
                              ? "UVieKey sẵn sàng hoạt động"
-                             : "Nhấn nút bên dưới để mở System Settings")
+                             : "Nhấn nút bên dưới để mở cài đặt Trợ năng")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
-                .padding(16)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
 
                 if !isTrusted {
-                    Divider()
+                    SCardDivider()
                     Button(action: onRequest) {
                         HStack(spacing: 8) {
                             Image(systemName: "lock.open")
-                            Text("Mở System Settings → Accessibility")
+                            Text("Mở System Settings → Trợ năng")
                                 .font(.system(size: 13, weight: .medium))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .foregroundStyle(.orange)
+                        .padding(.vertical, 11)
+                        .foregroundStyle(Color.accentColor)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(
-                        isTrusted ? Color.green.opacity(0.3) : Color.orange.opacity(0.3),
-                        lineWidth: 1
-                    )
-            )
-            .frame(maxWidth: 420)
+            .frame(maxWidth: 380)
         }
         .padding(.horizontal, 48)
     }
@@ -255,51 +256,49 @@ private struct PermissionStep: View {
 
 private struct ReadyStep: View {
     var body: some View {
-        VStack(spacing: 28) {
-            ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.1))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 52))
-                    .foregroundStyle(.green)
-            }
+        VStack(spacing: 22) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 56, weight: .regular))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 92, height: 92)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 6) {
                 Text("Tất cả đã sẵn sàng!")
-                    .font(.system(size: 28, weight: .bold))
-                Text("UVieKey đã được thiết lập xong.")
-                    .font(.system(size: 14))
+                    .font(.system(size: 26, weight: .bold))
+                Text("UVieKey đã sẵn sàng để sử dụng.")
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
             }
 
             // Quick tips
-            VStack(alignment: .leading, spacing: 10) {
-                tipRow("keyboard",              "Nhấn vào icon V/E trên thanh menu hoac Fn để chuyển ngôn ngữ")
-                tipRow("gearshape",             "Mở Cài đặt để tuỳ chỉnh bảng mã và tính năng")
-                tipRow("arrow.triangle.2.circlepath", "Mode Memory tự động nhớ ngôn ngữ cho từng app")
+            SettingsCard {
+                tipRow("keyboard",                     "Nhấn biểu tượng V/E trên thanh menu hoặc phím Fn để chuyển ngôn ngữ")
+                SCardDivider()
+                tipRow("gearshape",                    "Mở Cài đặt để tuỳ chỉnh bảng mã và tính năng")
+                SCardDivider()
+                tipRow("arrow.triangle.2.circlepath",  "Mode Memory tự động nhớ ngôn ngữ cho từng ứng dụng")
             }
-            .padding(16)
-            .background(Color(nsColor: .controlBackgroundColor),
-                         in: RoundedRectangle(cornerRadius: 12))
-            .frame(maxWidth: 420)
+            .frame(maxWidth: 380)
         }
         .padding(.horizontal, 48)
     }
 
     private func tipRow(_ icon: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundStyle(Color.blue)
-                .frame(width: 18)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, alignment: .center)
                 .padding(.top, 1)
             Text(text)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer()
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
     }
 }
