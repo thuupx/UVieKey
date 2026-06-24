@@ -92,11 +92,11 @@ struct AppsPane: View {
             PaneSection("Excluded Apps") {
                 SettingsCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Apps excluded from UVieKey")
+                        Text("Tắt UVieKey cho các ứng dụng")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
 
-                        Text("Tắt UVieKey cho các ứng dụng này")
+                        Text("Tắt UVieKey cho các ứng dụng trong danh sách")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
 

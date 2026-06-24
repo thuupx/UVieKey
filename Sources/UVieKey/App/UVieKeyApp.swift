@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var eventTap = EventTap(inputMethodManager: inputMethodManager)
     private weak var onboardingWindow: NSWindow?
     private let updateChecker = UpdateChecker.shared
+    private let hotkeyManager = GlobalHotkeyManager.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // Hide dock icon
@@ -68,6 +69,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Start periodic update checks (every 2h, fires once immediately).
         updateChecker.start()
+
+        // Wire the custom global hotkey to toggle Vietnamese/English.
+        hotkeyManager.onTrigger = { [weak self] in
+            self?.inputMethodManager.toggle()
+            NSSound.beep()
+        }
+        hotkeyManager.loadFromDefaults()
     }
 
     @objc private func onOnboardingCompleted() {

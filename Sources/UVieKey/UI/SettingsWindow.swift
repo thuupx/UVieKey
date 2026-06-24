@@ -21,7 +21,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // Recreate window if it was closed or invalidated
         if window == nil || window?.isVisible == false {
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 660, height: 500),
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
                 styleMask: [.titled, .closable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -181,6 +181,10 @@ struct GeneralPane: View {
     @AppStorage(DefaultsKey.smartSwitchKey) private var smartSwitchKey: Bool = false
     @AppStorage(DefaultsKey.engineEnabled)  private var engineEnabled: Bool = true
     @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = false
+    @AppStorage(DefaultsKey.inputMethodHotkeyEnabled) private var hotkeyEnabled: Bool = true
+    @AppStorage(DefaultsKey.customToggleEnabled) private var customToggleEnabled: Bool = false
+    @StateObject private var launchAtLogin = LaunchAtLoginManager.shared
+    @StateObject private var hotkeyManager = GlobalHotkeyManager.shared
 
     private var isVietnameseMode: Binding<Bool> {
         Binding(
@@ -231,11 +235,6 @@ struct GeneralPane: View {
                         imOption("VNI",   "vni")
                     }
                     .padding(12)
-
-                    SCardDivider()
-                    imRow("Telex", "aa→ă  aw→â  ow→ơ  uw→ư  dd→đ\ns→sắc  f→huyền  r→hỏi  x→ngã  j→nặng", tag: "telex")
-                    SCardDivider()
-                    imRow("VNI",   "a7→ă  a6→â  o7→ơ  u7→ư  d9→đ\na1→á  a2→à  a3→ả  a4→ã  a5→ạ",      tag: "vni")
                 }
             }
 
@@ -254,6 +253,98 @@ struct GeneralPane: View {
                                 "Tự động tắt khi dùng layout khác",
                                 "Bỏ qua engine khi keyboard không phải Latin layout",
                                 $autoDisableOnNonLatinLayout)
+                }
+            }
+
+            PaneSection("Hệ thống") {
+                SettingsCard {
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "power")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, alignment: .center)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Khởi động cùng macOS")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(launchAtLogin.isAvailable
+                                 ? "Tự động chạy UVieKey khi đăng nhập"
+                                 : "Tính năng không khả dụng")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $launchAtLogin.isEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .disabled(!launchAtLogin.isAvailable)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if launchAtLogin.isAvailable {
+                            launchAtLogin.isEnabled.toggle()
+                        }
+                    }
+                }
+            }
+
+            PaneSection("Phím tắt chuyển ngôn ngữ") {
+                SettingsCard {
+                    // Fn toggle (existing)
+                    SToggleRow("command",
+                                "Phím Fn để chuyển nhanh",
+                                "Nhấn phím Fn để bật / tắt Tiếng Việt",
+                                $hotkeyEnabled)
+
+                    SCardDivider()
+
+                    // Custom global shortcut
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, alignment: .center)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Phím tắt tuỳ chỉnh")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Phím tắt toàn hệ thống để chuyển Tiếng Việt / English")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $customToggleEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                    .onTapGesture { customToggleEnabled.toggle() }
+
+                    if customToggleEnabled {
+                        SCardDivider()
+                        HStack(spacing: 12) {
+                            Image(systemName: "record.circle")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, alignment: .center)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Lưu phím tắt")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text("Nhấn nút bên cạnh rồi bấm tổ hợp phím (cần ít nhất 1 phím sửa đổi)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            ShortcutRecorder()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                    }
+                }
+                .onChange(of: customToggleEnabled) { newValue in
+                    hotkeyManager.setEnabled(newValue)
                 }
             }
         }
@@ -549,20 +640,10 @@ struct ClipboardPane: View {
 
 struct KeyboardPane: View {
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
-    @AppStorage(DefaultsKey.inputMethodHotkeyEnabled) private var hotkeyEnabled: Bool = true
     @AppStorage(DefaultsKey.relaxedCoda) private var relaxedCoda: Bool = false
 
     var body: some View {
         PaneScroll {
-            PaneSection("Phím tắt") {
-                SettingsCard {
-                    SToggleRow("command",
-                                "Fn để chuyển nhanh",
-                                "Nhấn phím Fn để bật / tắt Tiếng Việt",
-                                $hotkeyEnabled)
-                }
-            }
-
             PaneSection("Vần cuối") {
                 SettingsCard {
                     SToggleRow("g.circle",

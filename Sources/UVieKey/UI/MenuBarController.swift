@@ -153,6 +153,7 @@ final class MenuBarController: ObservableObject {
 struct MenuBarPopoverView: View {
     @ObservedObject var controller: MenuBarController
     @StateObject private var clipboardManager = ClipboardManager.shared
+    @StateObject private var updateChecker = UpdateChecker.shared
     @AppStorage(DefaultsKey.inputMethod)        private var inputMethod: String = "telex"
     @AppStorage(DefaultsKey.smartSwitchKey)     private var smartSwitchKey: Bool = false
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
@@ -185,6 +186,14 @@ struct MenuBarPopoverView: View {
         HStack(spacing: 8) {
             Text("UVieKey")
                 .font(.system(size: 13, weight: .semibold))
+            if updateChecker.hasUpdate {
+                Text("Có cập nhật")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor, in: Capsule())
+            }
             Spacer()
             Text(AppVersion.fullVersion)
                 .font(.system(size: 10, weight: .medium))
