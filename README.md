@@ -5,16 +5,17 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 ## Tính năng
 
 - **Telex & VNI**: đầy đủ hai kiểu gõ phổ biến.
-- **Clipboard history**: lưu lịch sử copy, tự động tách đoạn theo delimiter (newline, comma, semicolon), giới hạn 1–99 entries.
 - **Đặt dấu thanh theo chuẩn mới**: `hoas` → `hoá` (tùy chọn).
+- **Viết tắt vần cuối (relaxed coda)**: `g` → `ng`, `h` → `nh` — gõ `đạg` thay `đặng`, `nhah` thay `nhạnh` (tùy chọn).
 - **Tự động viết hoa đầu câu** sau `.!?` (tùy chọn).
 - **Nhớ ngôn ngữ theo app**: tự động bật/tắt tiếng Việt cho từng ứng dụng.
 - **Tự động tắt** khi detect bàn phím không Latin (Nhật, Hàn, Trung, Nga...).
 - **Macro**: gõ tắt, ví dụ `mk` → `mình không`.
 - **Fn tap toggle**: nhấn nhanh `Fn` để chuyển Anh/Việt.
+- **Phím tắt tuỳ chỉnh**: cấu hình phím tắt toàn hệ thống để chuyển ngôn ngữ.
 - **AX mode**: hoạt động trong Spotlight và secure text fields.
+- **Kiểm tra cập nhật**: tự động kiểm tra 24 giờ/lần, nút kiểm tra thủ công trong tab Giới thiệu.
 - **Không Dock icon**: chỉ hiện trên menu bar.
-- **Always on top**: cho phép bật/tắt chế độ luôn hiển thị trên các ứng dụng khác khi copy.
 
 ## Yêu cầu hệ thống
 
@@ -25,24 +26,38 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 
 1. Tải `UVieKey-*-universal.dmg` từ [Releases](https://github.com/thuupx/UVieKey/releases).
 2. Mở DMG, kéo `UVieKey.app` vào thư mục `Applications`.
-3. Mở app, cấp quyền **Accessibility** trong **System Settings → Privacy & Security → Accessibility**.
-4. Icon `uvie` sẽ xuất hiện trên menu bar.
+3. Mở app, làm theo onboarding — cấp quyền **Accessibility** (và **Input Monitoring** trên macOS 15+).
+4. Icon `V` / `E` sẽ xuất hiện trên menu bar.
 
 > Nếu macOS chặn vì Gatekeeper: vào **System Settings → Privacy & Security** và chọn **Open Anyway**.
 
 ## Cách dùng
 
-- **Chuyển tiếng Việt**: click icon menu bar hoặc nhấn `Fn`.
-- **Chọn kiểu gõ**: Telex / VNI trong Preferences.
-- **Tạm dừng / thoát**: click icon menu bar.
+- **Chuyển tiếng Việt / English**: click icon menu bar, nhấn `Fn`, hoặc phím tắt tuỳ chỉnh.
+- **Chọn kiểu gõ**: Telex / VNI trong Cài đặt.
+- **Cài đặt / Thoát**: click icon menu bar.
 
 ## Phím tắt
 
 | Phím | Chức năng |
 | ------ | ----------- |
 | `Fn` (tap) | Chuyển Anh / Việt |
+| Phím tắt tuỳ chỉnh | Chuyển Anh / Việt (cấu hình trong Cài đặt) |
 | `Option + Backspace` | Xóa từ — OS xử lý, engine reset |
 | `Shift + Backspace` | Xóa từng ký tự, giữ nguyên case |
+
+## Cài đặt
+
+App có 6 tab cài đặt:
+
+| Tab | Chức năng |
+| --- | --------- |
+| **Tổng quan** | Bật/tắt engine, chọn Telex/VNI, nhớ ngôn ngữ từng app, tự động tắt khi non-Latin, khởi động cùng macOS, phím tắt |
+| **Bàn phím** | Viết tắt vần cuối (g→ng, h→nh), viết hoa đầu câu |
+| **Macro** | Bật/tắt macro văn bản, thêm/xóa macro |
+| **Ứng dụng** | Quản lý danh sách app excluded, compound, Chromium |
+| **Nâng cao** | Chính tả hiện đại, Quick Telex, Quick Start, chẩn đoán, gửi log |
+| **Giới thiệu** | Phiên bản, kiểm tra cập nhật, link GitHub |
 
 ## Build từ source
 
@@ -76,6 +91,32 @@ cp Info.plist "$APP/Contents/Info.plist"
 cp .build/release/UVieKey "$APP/Contents/MacOS/UVieKey"
 chmod +x "$APP/Contents/MacOS/UVieKey"
 cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+```
+
+## Kiến trúc mã nguồn
+
+```
+Sources/UVieKey/
+├── App/                    # AppDelegate, entry point
+├── Core/
+│   ├── EventTap/           # CGEventTap handler (split theo chức năng)
+│   │   ├── EventTap.swift          # lifecycle + state
+│   │   ├── EventTap+Handle.swift   # main dispatcher + sub-handlers
+│   │   ├── EventTap+AXMode.swift   # Accessibility text injection
+│   │   ├── EventTap+SyntheticOutput.swift
+│   │   ├── EventTap+Hotkey.swift   # Fn tap toggle
+│   │   ├── EventTap+AutoCapitalize.swift
+│   │   └── AppClassification.swift
+│   ├── AXTextInjector.swift # AX-based text injection
+│   ├── EngineBridge.swift   # Rust FFI bridge
+│   └── KeyboardLayoutMonitor.swift
+├── Features/               # InputMethodManager, MemoryManager, MacroManager
+├── UI/
+│   ├── Settings/           # SettingsWindow + Panes + Components
+│   ├── MenuBar/            # MenuBarController + popover
+│   ├── Onboarding/         # 3-step onboarding
+│   └── Apps/               # Apps pane + icon cache + picker
+└── Utils/                  # Logger, AppContextDetector, AppDefaults, etc.
 ```
 
 ## Release CI
