@@ -56,6 +56,9 @@ final class AXTextInjector {
     /// where we can verify the set succeeded by reading back the value.
     func tryInject(bs: Int, out: String) -> Bool {
         guard let element = getFocusedTextElement() else { return false }
+        // Only use AX for native text fields. Web contenteditable (AXWebArea,
+        // AXGroup) corrupts on setTextValue — fall back to CGEvent.
+        guard isNativeTextField(element) else { return false }
         guard let current = getTextValue(element) else { return false }
 
         // SAFETY CHECK: only use AX for short text fields (address bar,
@@ -80,7 +83,7 @@ final class AXTextInjector {
         // This catches silent AX failures on web contenteditable.
         guard let after = getTextValue(element), after.hasSuffix(newText) else {
             // AX set failed silently — revert if possible and fall back.
-            setTextValue(element, text: current)
+            _ = setTextValue(element, text: current)
             return false
         }
 
@@ -152,6 +155,21 @@ final class AXTextInjector {
         guard hasValue == .success else { return nil }
 
         return element
+    }
+
+    /// Check if the AX element is a native text field (not web contenteditable).
+    /// Web areas (AXWebArea, AXGroup) support kAXValueAttribute but
+    /// setTextValue corrupts them — we must skip AX for those.
+    private func isNativeTextField(_ element: AXUIElement) -> Bool {
+        var role: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+        guard let roleString = role as? String else { return false }
+
+        // Only allow AX for native text input roles.
+        // AXWebArea / AXGroup = web contenteditable → skip (use CGEvent fallback).
+        return roleString == "AXTextField"
+            || roleString == "AXTextArea"
+            || roleString == "AXComboBox"  // Safari address bar
     }
 
     private func getTextValue(_ element: AXUIElement) -> String? {
