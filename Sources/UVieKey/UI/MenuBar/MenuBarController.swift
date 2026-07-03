@@ -94,22 +94,32 @@ final class MenuBarController: ObservableObject {
     // MARK: Icon - drawn as NSImage for pixel-perfect vertical centering
 
     private func updateIcon() {
-        statusItem?.button?.image = makeIcon()
-        statusItem?.button?.title = ""
+        let button = statusItem?.button
+        // Force the status item to discard the cached image representation.
+        // On macOS 15+, assigning a new NSImage with the same dimensions to
+        // the button doesn't always trigger a redraw — clearing first ensures
+        // the new image is picked up.
+        button?.image = nil
+        button?.image = makeIcon()
+        button?.title = ""
     }
 
     private func makeIcon() -> NSImage {
         let label = isVietnamese ? "V" : "E"
         let color = isVietnamese ? NSColor(red: 0.808, green: 0.255, blue: 0.169, alpha: 1.0) : NSColor.secondaryLabelColor
         let sz = NSSize(width: 20, height: 18)
-        let img = NSImage(size: sz, flipped: false) { rect in
-            let font = NSFont.systemFont(ofSize: 18, weight: .bold)
-            let str = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: color])
-            let s = str.size()
-            str.draw(at: NSPoint(x: (rect.width - s.width) / 2,
-                                 y: (rect.height - s.height) / 2))
-            return true
-        }
+        // Pre-render into a bitmap instead of using a lazy drawing handler.
+        // The drawing-handler variant (NSImage(size:flipped:drawingHandler:))
+        // can be cached by the status item on macOS 15 and fail to re-render
+        // when a new image instance is assigned.
+        let img = NSImage(size: sz)
+        img.lockFocus()
+        let font = NSFont.systemFont(ofSize: 18, weight: .bold)
+        let str = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: color])
+        let s = str.size()
+        str.draw(at: NSPoint(x: (sz.width - s.width) / 2,
+                             y: (sz.height - s.height) / 2))
+        img.unlockFocus()
         img.isTemplate = false
         return img
     }
@@ -128,6 +138,23 @@ final class MenuBarController: ObservableObject {
 
     func toggle() {
         inputMethodManager?.toggle()
+        // Read the value directly from the source of truth instead of our
+        // cached @Published copy, which is updated asynchronously by the
+        // Combine sink and would still hold the OLD value at this point.
+        if let imm = inputMethodManager {
+            isVietnamese = imm.isVietnamese
+        }
+        updateIcon()
+    }
+
+    /// Sync the local `isVietnamese` state and icon from the input method
+    /// manager. Used by callers (global hotkey, app switch) that toggle the
+    /// engine outside of `MenuBarController.toggle()` and need the icon to
+    /// update immediately rather than waiting for the async Combine sink.
+    func syncFromInputMethod() {
+        if let imm = inputMethodManager {
+            isVietnamese = imm.isVietnamese
+        }
         updateIcon()
     }
 

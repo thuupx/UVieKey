@@ -125,7 +125,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Wire the custom global hotkey to toggle Vietnamese/English.
         hotkeyManager.onTrigger = { [weak self] in
-            self?.inputMethodManager.toggle()
+            guard let self else { return }
+            self.inputMethodManager.toggle()
+            // Sync the menu bar icon immediately — the Combine pipeline
+            // updates it asynchronously, which can lag on macOS 15+.
+            self.menuBar?.syncFromInputMethod()
             NSSound.beep()
         }
         hotkeyManager.loadFromDefaults()
