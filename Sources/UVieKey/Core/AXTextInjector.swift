@@ -28,15 +28,7 @@ final class AXTextInjector {
             return false
         }
 
-        guard let current = getTextValue(element) else { return false }
-
-        var newText = current
-        for _ in 0..<bs { newText = String(newText.dropLast()) }
-        newText += out
-
-        setTextValue(element, text: newText)
-        setCursorToEnd(element, length: newText.count)
-        return true
+        return tryInject(bs: bs, out: out, element: element)
     }
 
     /// Backspace. Returns true if AX injection succeeded.
@@ -50,6 +42,19 @@ final class AXTextInjector {
             return false
         }
 
+        return tryInject(bs: bs, out: out, element: element)
+    }
+
+    /// Try to inject (bs, out) via AX. Returns true if successful.
+    /// Used by EventTap as a hybrid fallback: try AX first, then CGEvent.
+    /// The engine has already processed the keystroke — this only handles
+    /// the visual update.
+    func tryInject(bs: Int, out: String) -> Bool {
+        guard let element = getFocusedTextElement() else { return false }
+        return tryInject(bs: bs, out: out, element: element)
+    }
+
+    private func tryInject(bs: Int, out: String, element: AXUIElement) -> Bool {
         guard let current = getTextValue(element) else { return false }
 
         var newText = current

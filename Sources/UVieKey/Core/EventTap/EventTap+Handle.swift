@@ -171,6 +171,15 @@ extension EventTap {
             print("⚠️ EventTap: Engine isComposing but backspace returned empty")
         }
 
+        // For compound apps, try AX injection first (atomic, no flicker).
+        if isCompoundApp && (bs > 0 || !out.isEmpty) {
+            if axInjector.tryInject(bs: bs, out: out) {
+                perfEnd("backspace-ax", keyCode: keyCode, app: app)
+                return nil
+            }
+        }
+
+        // CGEvent fallback
         if bs > 0 {
             if isCompoundApp {
                 applyCompoundBackspaces(bs: bs, out: out)
@@ -295,6 +304,18 @@ extension EventTap {
 
         // Update sentence start state based on what was typed
         updateSentenceStartState(after: firstChar)
+
+        // For compound apps (Safari, Notes, etc.), try AX injection first.
+        // AX is atomic (setTextValue in one call) — no flicker.
+        // If AX fails (web content, non-text fields), fall back to CGEvent.
+        if isCompoundApp && (bs > 0 || !out.isEmpty) {
+            if axInjector.tryInject(bs: bs, out: out) {
+                perfEnd("char-ax", keyCode: keyCode, app: app)
+                return nil
+            }
+        }
+
+        // CGEvent fallback
         if bs > 0 {
             if isCompoundApp {
                 applyCompoundBackspaces(bs: bs, out: out)
