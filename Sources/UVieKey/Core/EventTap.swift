@@ -412,11 +412,6 @@ final class EventTap: ObservableObject {
             if !composing.isEmpty || !committed.isEmpty {
                 Logger.shared.keystroke("keydown keyCode=\(keyCode) composing='\(composing)' committed='\(committed)' app=\(app)")
             }
-            #if DEBUG
-            if !composing.isEmpty || !committed.isEmpty {
-                NSLog("[UVieKey] keystroke - keyCode: \(keyCode), composing: '\(composing)', committed: '\(committed)'")
-            }
-            #endif
         }
 
         // Detect text-selection shortcuts. The diff engine tracks text at the
@@ -939,8 +934,8 @@ final class EventTap: ObservableObject {
         }
         lastToggleTime = now
 
-        DispatchQueue.main.async { [self] in
-            inputMethodManager.toggle()
+        DispatchQueue.main.async { [weak self] in
+            self?.inputMethodManager.toggle()
             NSSound.beep()
         }
     }

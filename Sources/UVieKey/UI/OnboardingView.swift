@@ -28,7 +28,7 @@ struct OnboardingView: View {
             Spacer()
             navigationBar
         }
-        .frame(minWidth: 560, minHeight: 440)
+        .frame(minWidth: 560, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             isTrusted = AccessibilityChecker.isTrusted

@@ -21,7 +21,7 @@ final class AppContextDetector {
     func start() {
         update()
         DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            self.timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
                 self?.update()
             }
         }

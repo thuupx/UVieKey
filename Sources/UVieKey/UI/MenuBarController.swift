@@ -154,11 +154,11 @@ struct MenuBarPopoverView: View {
     @ObservedObject var controller: MenuBarController
     @StateObject private var updateChecker = UpdateChecker.shared
     @AppStorage(DefaultsKey.inputMethod)        private var inputMethod: String = "telex"
-    @AppStorage(DefaultsKey.smartSwitchKey)     private var smartSwitchKey: Bool = false
+    @AppStorage(DefaultsKey.smartSwitchKey)     private var smartSwitchKey: Bool = true
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
     @AppStorage(DefaultsKey.macroEnabled)       private var macroEnabled: Bool = false
-    @AppStorage(DefaultsKey.relaxedCoda)        private var relaxedCoda: Bool = true
-    @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = false
+    @AppStorage(DefaultsKey.relaxedCoda)        private var relaxedCoda: Bool = false
+    @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = true
     @AppStorage(DefaultsKey.keepPopoverOpen)    private var keepPopoverOpen: Bool = false
     @StateObject private var layoutMonitor = KeyboardLayoutMonitor.shared
 

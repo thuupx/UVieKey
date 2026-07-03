@@ -19,7 +19,7 @@ struct UVieKeyApp: App {
                 })
         }
         .windowResizability(.contentSize)
-        .defaultSize(width: 520, height: 440)
+        .defaultSize(width: 560, height: 520)
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultPosition(.center)
 
