@@ -14,8 +14,10 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 - **Fn tap toggle**: nhấn nhanh `Fn` để chuyển Anh/Việt.
 - **Phím tắt tuỳ chỉnh**: cấu hình phím tắt toàn hệ thống để chuyển ngôn ngữ.
 - **AX mode**: hoạt động trong Spotlight và secure text fields.
-- **Kiểm tra cập nhật**: tự động kiểm tra 24 giờ/lần, nút kiểm tra thủ công trong tab Giới thiệu.
+- **Kiểm tra cập nhật**: tự động kiểm tra 24 giờ/lần, hoặc kiểm tra thủ công
 - **Không Dock icon**: chỉ hiện trên menu bar.
+- **Popover**: toggle các tính năng nhanh trên menu bar.
+- **Chẩn đoán lỗi**: Chạy chẩn đoán và gửi báo cáo lỗi bằng hệ thống logs cho developer để cải thiện trải nghiệm người dùng.
 
 ## Yêu cầu hệ thống
 

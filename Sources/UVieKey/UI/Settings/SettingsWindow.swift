@@ -134,6 +134,11 @@ struct SettingsView: View {
         }
         .frame(minWidth: 620, minHeight: 460)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToSettingsTab)) { note in
+            if let t = note.userInfo?["tab"] as? SettingsTab {
+                tab = t
+            }
+        }
     }
 }
 

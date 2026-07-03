@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AboutPane: View {
     @StateObject private var updateChecker = UpdateChecker.shared
+    @State private var showBugReportGuide = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,7 +99,7 @@ struct AboutPane: View {
             HStack(spacing: 0) {
                 aboutLink("link",                  "GitHub",     "https://github.com/thuupx/UVieKey")
                 Divider().frame(height: 20)
-                aboutLink("exclamationmark.bubble", "Báo lỗi",   "https://github.com/thuupx/UVieKey/issues")
+                bugReportButton
                 Divider().frame(height: 20)
                 aboutLink("arrow.down.circle",     "Cập nhật",   "https://github.com/thuupx/UVieKey/releases")
             }
@@ -106,6 +107,22 @@ struct AboutPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showBugReportGuide) {
+            BugReportGuide()
+        }
+    }
+
+    private var bugReportButton: some View {
+        Button { showBugReportGuide = true } label: {
+            VStack(spacing: 5) {
+                Image(systemName: "exclamationmark.bubble").font(.system(size: 14))
+                Text("Báo lỗi").font(.system(size: 11))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     private func appIconImage() -> NSImage {
