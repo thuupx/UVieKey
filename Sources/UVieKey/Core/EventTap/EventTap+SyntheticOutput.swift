@@ -32,48 +32,46 @@ extension EventTap {
     }
 
     /// Standard backspaces.
+    ///
+    /// Only posts keyDown — the synthetic keyUp is unnecessary for deletion
+    /// and doubles the event count, amplifying the backspace-then-insert
+    /// flicker on every diff replace. Apps process the delete on keyDown.
     func applyBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
-        perfNoteEvent(2 * count)
+        perfNoteEvent(count)
         for _ in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: true)
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             down?.post(tap: .cghidEventTap)
-            let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: false)
-            up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
-            up?.post(tap: .cghidEventTap)
         }
     }
 
     /// Shift+Left Arrow selection used for apps where synthetic backspace causes
     /// duplicate characters. The caller must post the replacement text afterward.
+    ///
+    /// Only posts keyDown — same rationale as applyBackspaces.
     func applySelectionBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
-        perfNoteEvent(2 * count)
+        perfNoteEvent(count)
         for _ in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 123, keyDown: true)
             down?.flags = .maskShift
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
             down?.post(tap: .cghidEventTap)
-            let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 123, keyDown: false)
-            up?.flags = .maskShift
-            up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
-            up?.post(tap: .cghidEventTap)
         }
     }
 
     /// Send U+202F (Narrow No-Break Space) to invalidate autocomplete dropdown.
+    ///
+    /// Only posts keyDown — same rationale as applyBackspaces.
     func sendEmptyCharacter() {
         guard let eventSource else { return }
-        perfNoteEvent(2)
+        perfNoteEvent(1)
         let emptyChar: UniChar = 0x202F
         let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: true)
         down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
         down?.keyboardSetUnicodeString(stringLength: 1, unicodeString: [emptyChar])
         down?.post(tap: .cghidEventTap)
-        let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: false)
-        up?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
-        up?.post(tap: .cghidEventTap)
     }
 
     func postText(_ string: String) {
