@@ -24,10 +24,9 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 
 ## Hiệu năng
 
-- **Binary**: 2.3 MB (release, arm64)
-- **Bundle**: 2.6 MB (`UVieKey.app`)
-- **RAM**: ~120 MB resident khi chạy (bao gồm Swift runtime, AppKit, Accessibility framework)
-- **CPU**: ~0% khi idle (event-driven, không polling)
+- **DMG**: 1.7 MB (release pipeline, universal)
+- **RAM**: ~30 MB (Activity Monitor)
+- **CPU**: ~0% khi gõ
 
 ## Cài đặt
 
