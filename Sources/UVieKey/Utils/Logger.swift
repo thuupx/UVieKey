@@ -37,6 +37,11 @@ final class Logger {
         try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
         logURL = logsDir.appendingPathComponent("uviekey.log")
 
+        // `FileHandle(forWritingTo:)` fails if the file doesn't exist, so
+        // create it explicitly first.
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
         if let attrs = try? FileManager.default.attributesOfItem(atPath: logURL.path),
            let size = attrs[.size] as? Int {
             currentSize = size

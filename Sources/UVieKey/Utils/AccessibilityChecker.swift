@@ -1,5 +1,5 @@
 import Cocoa
-import IOKit
+import IOKit.hid
 
 /// Checks and requests Accessibility (and Input Monitoring on macOS 15+)
 /// permission for CGEventTap.
@@ -23,10 +23,11 @@ enum AccessibilityChecker {
 
     /// On macOS 15+, query Input Monitoring permission via IOKit.
     /// Returns `true` on older OSes (permission not required).
+    /// Wrapped in a try? — `IOHIDCheckAccess` can throw an ObjC exception
+    /// when the process has no valid bundle identity (e.g. `swift run`
+    /// without a signed .app), which would crash the app.
     static var isInputMonitoringTrusted: Bool {
         guard requiresInputMonitoring else { return true }
-        // kIOHIDRequestTypeListenEvent == 0 on macOS 14+; the symbol is
-        // available since 10.15 but only enforced on 15+.
         return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
     }
 
@@ -36,15 +37,15 @@ enum AccessibilityChecker {
         isTrusted && isInputMonitoringTrusted
     }
 
+    /// Request Accessibility permission (shows the system prompt).
+    /// Does NOT call `IOHIDRequestAccess` — on macOS 26 that API can
+    /// destabilize the process when invoked from an unsigned `swift run`
+    /// binary. The user grants Input Monitoring via System Settings
+    /// (the onboarding provides a button to open the right pane).
     static func requestAccess() {
         let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let options: NSDictionary = [prompt: true]
         AXIsProcessTrustedWithOptions(options)
-        // On macOS 15+, also request Input Monitoring. The API returns the
-        // current state and triggers the system prompt if not yet decided.
-        if requiresInputMonitoring {
-            _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-        }
     }
 
     static func openPrivacySettings() {

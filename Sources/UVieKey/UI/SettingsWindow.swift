@@ -52,7 +52,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
         guard let w = window else { return }
         w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -390,8 +394,8 @@ struct KeyboardPane: View {
             PaneSection("Vần cuối") {
                 SettingsCard {
                     SToggleRow("g.circle",
-                                "Cho phép g thay cho ng",
-                                "Bật để gõ đặg, đág thay vì đặng, đáng. Cách viết tắt tiện lợi khi gõ nhanh.",
+                                "Viết tắt vần cuối (g→ng, h→nh)",
+                                "Bật để gõ đặg, nhàh thay vì đặng, nhành. Tiện khi gõ nhanh.",
                                 $relaxedCoda)
                 }
             }
@@ -583,8 +587,8 @@ struct AdvancedPane: View {
             PaneSection("Chẩn đoán") {
                 SettingsCard {
                     SToggleRow("keyboard",
-                                "Ghi keystroke trace",
-                                "Ghi lại mỗi phím gõ để gửi báo cáo lỗi. Tắt sau khi gửi log.",
+                                "Bật chẩn đoán",
+                                "Ghi lại mỗi phím gõ để gửi báo cáo lỗi. Hãy tắt sau khi gửi log.",
                                 $keystrokeTrace)
                 }
                 SettingsCard {

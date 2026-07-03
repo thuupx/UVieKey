@@ -292,7 +292,7 @@ struct MenuBarPopoverView: View {
             toggleRow("brain","Nhớ ngôn ngữ từng app",      $smartSwitchKey)
             toggleRow("textformat",                  "Viết hoa đầu câu",           $uppercaseFirstChar)
             rowLabel("GÕ NHANH")
-            toggleRow("g.circle",                    "g thay cho ng",            $relaxedCoda)
+            toggleRow("g.circle",                    "Viết tắt g→ng, h→nh",      $relaxedCoda)
             toggleRow("doc.text",                    "Macro văn bản",            $macroEnabled)
 
             rowLabel("MENUBAR")
