@@ -6,27 +6,27 @@ extension EventTap {
     /// Send backspaces for compound apps (Safari, Notes, Chrome, Comet, Atlas, etc.).
     ///
     /// Strategy:
-    /// - Send an empty-char sentinel (U+202F) to dismiss the autocomplete dropdown
-    ///   when bs > 1 (multi-char replace / V-C-V split). For bs == 1 the dropdown
-    ///   hasn't rendered at normal typing speed, so the sentinel is skipped.
-    /// - For Chromium browsers (Chrome, Comet, Atlas, Brave, Edge, Arc, Vivaldi):
-    ///   the omnibox autocomplete swallows synthetic backspaces when there is
-    ///   replacement text, causing duplicate characters (e.g. "tow" → "toơ"
-    ///   instead of "tơ"). Shift+Left selection + overwrite avoids this because
-    ///   the selection is replaced atomically by the subsequent postText. We
-    ///   only use selection when `out` is non-empty (replace case); pure
-    ///   deletions (out empty) use plain backspaces which work fine.
+    /// - When replacing text (out is non-empty), use Shift+Left selection +
+    ///   overwrite for ALL compound apps. This is atomic — the selection is
+    ///   replaced by the subsequent postText in a single operation, eliminating
+    ///   the "delete then insert" flicker that plain backspaces cause.
+    ///   The empty-char sentinel is NOT needed with selection-based delete
+    ///   because selecting text doesn't trigger autocomplete dropdowns.
+    /// - For pure deletions (out is empty), use plain backspaces with the
+    ///   empty-char sentinel when bs > 1 to dismiss autocomplete.
     func applyCompoundBackspaces(bs: Int, out: String) {
-        let needsEmptyChar = bs > 1
-        if needsEmptyChar {
-            sendEmptyCharacter()
-        }
-        let adjustedBs = bs + (needsEmptyChar ? 1 : 0)
-        if isChromium && !out.isEmpty {
-            // Chromium omnibox replace: select then overwrite to avoid dup.
-            applySelectionBackspaces(adjustedBs)
+        if !out.isEmpty {
+            // Replace case: selection-based delete is atomic (no flicker).
+            // Shift+Left selects the text without deleting it, then postText
+            // replaces the selection in one operation.
+            applySelectionBackspaces(bs)
         } else {
-            // Non-Chromium or pure deletion: plain backspaces.
+            // Pure deletion: plain backspaces + sentinel for autocomplete.
+            let needsEmptyChar = bs > 1
+            if needsEmptyChar {
+                sendEmptyCharacter()
+            }
+            let adjustedBs = bs + (needsEmptyChar ? 1 : 0)
             applyBackspaces(adjustedBs)
         }
     }
