@@ -1,63 +1,6 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Icon Cache
-
-@MainActor
-final class AppIconCache {
-    static let shared = AppIconCache()
-    private let cache = NSCache<NSString, NSImage>()
-
-    private init() {
-        cache.countLimit = 200
-    }
-
-    func icon(for bundleID: String) -> NSImage? {
-        let key = bundleID as NSString
-        if let cached = cache.object(forKey: key) {
-            return cached
-        }
-
-        let image = loadIcon(for: bundleID)
-        if let image = image {
-            cache.setObject(image, forKey: key)
-        }
-        return image
-    }
-
-    private func loadIcon(for bundleID: String) -> NSImage? {
-        // Try to get icon from running app first
-        if let runningApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleID }) {
-            return resize(runningApp.icon)
-        }
-
-        // If not running, try to get icon from app path
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            return resize(NSWorkspace.shared.icon(forFile: appURL.path))
-        }
-
-        return nil
-    }
-
-    private func resize(_ image: NSImage?) -> NSImage? {
-        guard let image = image else { return nil }
-        let targetSize = NSSize(width: 64, height: 64)
-        guard image.size.width > targetSize.width || image.size.height > targetSize.height else {
-            return image
-        }
-
-        let resized = NSImage(size: targetSize)
-        resized.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        image.draw(in: NSRect(origin: .zero, size: targetSize),
-                   from: NSRect(origin: .zero, size: image.size),
-                   operation: .copy,
-                   fraction: 1.0)
-        resized.unlockFocus()
-        return resized
-    }
-}
-
 // MARK: - Apps Pane
 
 struct AppsPane: View {
@@ -368,6 +311,8 @@ struct AppsPane: View {
         saveExcludedApps()
     }
 
+    // MARK: - Chromium Apps
+
     private func loadChromiumApps() {
         let custom = UserDefaults.standard.stringArray(forKey: DefaultsKey.customChromiumApps) ?? []
         let allBundleIDs = defaultChromiumApps + custom
@@ -429,143 +374,5 @@ struct AppsPane: View {
             return String(last)
         }
         return bundleID
-    }
-}
-
-// MARK: - App Row
-
-private struct AppRow: View {
-    let bundleID: String
-    let icon: NSImage?
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            if let icon = icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 24, height: 24)
-            } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.1))
-                    .frame(width: 24, height: 24)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appName(from: bundleID))
-                    .font(.system(size: 13, weight: .medium))
-                Text(bundleID)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Button {
-                onRemove()
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-    }
-
-    private func appName(from bundleID: String) -> String {
-        let parts = bundleID.split(separator: ".")
-        if let last = parts.last {
-            return String(last)
-        }
-        return bundleID
-    }
-}
-
-// MARK: - Running App Model
-
-private struct RunningApp: Identifiable {
-    let id = UUID()
-    let bundleID: String
-    let name: String
-    let icon: NSImage?
-}
-
-// MARK: - App Picker Sheet
-
-private struct AppPickerSheet: View {
-    let availableApps: [RunningApp]
-    let onSelect: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Chọn ứng dụng")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(availableApps) { app in
-                        Button {
-                            onSelect(app.bundleID)
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 12) {
-                                if let icon = app.icon {
-                                    Image(nsImage: icon)
-                                        .resizable()
-                                        .frame(width: 32, height: 32)
-                                } else {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color.primary.opacity(0.1))
-                                        .frame(width: 32, height: 32)
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.name)
-                                        .font(.system(size: 13, weight: .medium))
-                                    Text(app.bundleID)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                        .lineLimit(1)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.blue)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        if app.id != availableApps.last?.id {
-                            Divider()
-                        }
-                    }
-                }
-            }
-        }
-        .frame(width: 400, height: 500)
     }
 }

@@ -120,6 +120,14 @@ final class GlobalHotkeyManager: ObservableObject {
         loadFromDefaults()
     }
 
+    deinit {
+        // deinit is nonisolated, so we can't call @MainActor methods.
+        // Call the Carbon API directly to unregister the hotkey.
+        if let ref = hotkeyRef {
+            UnregisterEventHotKey(ref)
+        }
+    }
+
     // MARK: - Public API
 
     /// Loads the saved binding from UserDefaults and registers it if enabled.

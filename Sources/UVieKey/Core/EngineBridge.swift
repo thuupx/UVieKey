@@ -20,6 +20,12 @@ func uvie_engine_set_modern_orthography(_ engine: OpaquePointer?, _ enabled: Int
 @_silgen_name("uvie_engine_set_relaxed_coda")
 func uvie_engine_set_relaxed_coda(_ engine: OpaquePointer?, _ enabled: Int32)
 
+@_silgen_name("uvie_engine_set_quick_telex")
+func uvie_engine_set_quick_telex(_ engine: OpaquePointer?, _ enabled: Int32)
+
+@_silgen_name("uvie_engine_set_quick_start")
+func uvie_engine_set_quick_start(_ engine: OpaquePointer?, _ enabled: Int32)
+
 @_silgen_name("uvie_engine_feed")
 func uvie_engine_feed(_ engine: OpaquePointer?, _ ch: CChar, _ out_buf: UnsafeMutablePointer<CChar>?, _ out_len: Int) -> Int
 
@@ -76,6 +82,16 @@ final class EngineBridge {
     func setRelaxedCoda(_ enabled: Bool) {
         guard let engine else { return }
         uvie_engine_set_relaxed_coda(engine, enabled ? 1 : 0)
+    }
+
+    func setQuickTelex(_ enabled: Bool) {
+        guard let engine else { return }
+        uvie_engine_set_quick_telex(engine, enabled ? 1 : 0)
+    }
+
+    func setQuickStart(_ enabled: Bool) {
+        guard let engine else { return }
+        uvie_engine_set_quick_start(engine, enabled ? 1 : 0)
     }
 
     // MARK: - Keystroke handling

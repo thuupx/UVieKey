@@ -8,3 +8,4 @@ Sources/UVieKey/Generated/
 Frameworks/*.a
 Frameworks/*.h
 !Frameworks/.gitkeep
+UVieKey.app/

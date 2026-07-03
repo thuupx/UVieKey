@@ -1,46 +1,56 @@
 import Cocoa
 import ApplicationServices
+import Combine
 
 /// Detects the currently focused application using AXUIElement,
 /// with fallback to NSWorkspace.frontmostApplication.
-/// Also detects visible Spotlight window via CGWindowList.
+///
+/// Uses NSWorkspace.didActivateApplicationNotification instead of polling.
+/// Spotlight detection was removed — it's handled via `AppDefaults.axApps`
+/// which contains "com.apple.Spotlight", so AX mode kicks in automatically
+/// when Spotlight is the frontmost app.
 final class AppContextDetector {
-    private var timer: Timer?
     private var _bundleID: String = ""
-    private var _isSpotlightVisible: Bool = false
-    private let queue = DispatchQueue(label: "uvie.appcontext")
+    private var cancellables = Set<AnyCancellable>()
 
     var bundleID: String {
-        queue.sync { _bundleID }
-    }
-
-    var isSpotlightVisible: Bool {
-        queue.sync { _isSpotlightVisible }
+        // Read from CGEventTap callback (main runloop) and from
+        // NSWorkspace notification handler (main). No queue needed.
+        _bundleID
     }
 
     func start() {
+        // Initial value
         update()
-        DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-                self?.update()
+
+        // Listen for app activations instead of polling.
+        NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.didActivateApplicationNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication else { return }
+                self?.update(for: app)
             }
-        }
+            .store(in: &cancellables)
     }
 
     func stop() {
-        DispatchQueue.main.async {
-            self.timer?.invalidate()
-            self.timer = nil
-        }
+        cancellables.removeAll()
     }
 
+    /// Update on app switch notification. Uses the NSRunningApplication
+    /// from the notification when available (avoids an extra AX call),
+    /// falling back to AXUIElement focused-app lookup.
+    private func update(for app: NSRunningApplication) {
+        // The notification's app is the newly activated app — use its
+        // bundleIdentifier directly. This is cheaper than AXUIElement.
+        _bundleID = app.bundleIdentifier ?? ""
+    }
+
+    /// Initial update — no notification payload, so do the full lookup.
     private func update() {
-        let bid = getFocusedAppBundleID() ?? getFrontmostAppBundleID()
-        let spotlightVisible = isSpotlightWindowVisible()
-        queue.async {
-            self._bundleID = bid ?? ""
-            self._isSpotlightVisible = spotlightVisible
-        }
+        _bundleID = getFocusedAppBundleID() ?? getFrontmostAppBundleID() ?? ""
     }
 
     /// Primary: AXUIElement focused application.
@@ -67,23 +77,5 @@ final class AppContextDetector {
     /// Fallback: NSWorkspace frontmost application.
     private func getFrontmostAppBundleID() -> String? {
         return NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-    }
-
-    /// Check if Spotlight window is visible using CGWindowList.
-    private func isSpotlightWindowVisible() -> Bool {
-        let windowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]
-        guard let windows = windowList else { return false }
-
-        for window in windows {
-            if let ownerName = window[kCGWindowOwnerName as String] as? String,
-               ownerName == "Spotlight" {
-                return true
-            }
-            if let windowName = window[kCGWindowName as String] as? String,
-               windowName.contains("Spotlight") {
-                return true
-            }
-        }
-        return false
     }
 }
