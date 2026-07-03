@@ -38,17 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             DefaultsKey.modernOrthography:  true,
             DefaultsKey.relaxedCoda:        false,
             DefaultsKey.inputMethod:        "telex",
-            DefaultsKey.clipboardHistoryEnabled: true,
-            DefaultsKey.clipboardMaxEntries: 10,
-            DefaultsKey.clipboardAutoSplitEnabled: false,
-            DefaultsKey.clipboardSplitDelimiter: "newline",
-            DefaultsKey.clipboardSplitMinLength: 3,
             DefaultsKey.inputMethodHotkeyEnabled: true,
             DefaultsKey.autoDisableOnNonLatinLayout: true,
             DefaultsKey.keepPopoverOpen: false,
+            DefaultsKey.quickTelex:         false,
+            DefaultsKey.quickStart:         false,
         ])
-
-        ClipboardManager.shared.startObserving()
 
         menuBar = MenuBarController()
         menuBar?.setEventTap(eventTap)
@@ -61,8 +56,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         )
 
         let onboardingDone = UserDefaults.standard.bool(forKey: DefaultsKey.onboardingCompleted)
-        if onboardingDone && AccessibilityChecker.isTrusted {
-            eventTap.start()
+        if onboardingDone {
+            // On macOS 26 (and sometimes 15+), `AXIsProcessTrustedWithOptions`
+            // returns a cached value that lags the user's actual grant. Poll
+            // briefly so a user who granted permission between launches is
+            // picked up without having to reopen the app (Bug #10).
+            AccessibilityChecker.pollForAccess(timeout: 10) { [weak self] granted in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if granted {
+                        self.eventTap.start()
+                    } else {
+                        // Trust not yet active — show onboarding again so the
+                        // user can re-grant. The onboarding's poll will start
+                        // the tap once trust comes through.
+                        self.showOnboarding()
+                    }
+                }
+            }
         } else {
             showOnboarding()
         }

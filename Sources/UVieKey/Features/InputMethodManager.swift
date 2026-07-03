@@ -3,6 +3,11 @@ import Combine
 
 extension Notification.Name {
     static let resetEngineAfterAppSwitch = Notification.Name("UVieKeyResetEngineAfterAppSwitch")
+    /// Posted when the `CGEventTap` is successfully created (after retries).
+    static let eventTapDidStart = Notification.Name("UVieKeyEventTapDidStart")
+    /// Posted when the `CGEventTap` cannot be created after all retries.
+    /// The host should prompt the user to restart the app.
+    static let eventTapStartFailed = Notification.Name("UVieKeyEventTapStartFailed")
 }
 
 /// Manages Vietnamese/English toggle, hotkeys, and per-app state.

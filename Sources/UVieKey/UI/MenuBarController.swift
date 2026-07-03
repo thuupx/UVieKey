@@ -152,7 +152,6 @@ final class MenuBarController: ObservableObject {
 
 struct MenuBarPopoverView: View {
     @ObservedObject var controller: MenuBarController
-    @StateObject private var clipboardManager = ClipboardManager.shared
     @StateObject private var updateChecker = UpdateChecker.shared
     @AppStorage(DefaultsKey.inputMethod)        private var inputMethod: String = "telex"
     @AppStorage(DefaultsKey.smartSwitchKey)     private var smartSwitchKey: Bool = false
@@ -172,8 +171,6 @@ struct MenuBarPopoverView: View {
             inputMethodRow
             Divider().padding(.horizontal, 12)
             featureRows
-            Divider()
-            clipboardSection
             Divider()
             popoverFooter
         }
@@ -351,69 +348,6 @@ struct MenuBarPopoverView: View {
         .padding(.vertical, 5)
         .contentShape(Rectangle())
         .onTapGesture { binding.wrappedValue.toggle() }
-    }
-
-    // MARK: Clipboard
-
-    @ViewBuilder
-    private var clipboardSection: some View {
-        if !clipboardManager.history.isEmpty {
-            VStack(spacing: 0) {
-                HStack {
-                    rowLabel("CLIPBOARD")
-                    Spacer()
-                    Button {
-                        clipboardManager.clearHistory()
-                    } label: {
-                        Text("Xoá tất cả")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color.red.opacity(0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 12)
-                }
-                ForEach(Array(clipboardManager.previewItems.enumerated()), id: \.offset) { _, item in
-                    clipboardRow(item: item)
-                }
-            }
-        }
-    }
-
-    private func clipboardRow(item: String) -> some View {
-        let isCopied = clipboardManager.recentlyCopiedString == item
-        return Button {
-            clipboardManager.copyToClipboard(item)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                Text(truncate(item, limit: 30))
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                Spacer()
-                if isCopied {
-                    HStack(spacing: 3) {
-                        Text("Đã sao chép")
-                            .font(.system(size: 10, weight: .medium))
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .foregroundStyle(Color.accentColor)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.primary)
-    }
-
-    private func truncate(_ text: String, limit: Int) -> String {
-        if text.count <= limit { return text }
-        return String(text.prefix(limit)) + "…"
     }
 
     // MARK: Footer

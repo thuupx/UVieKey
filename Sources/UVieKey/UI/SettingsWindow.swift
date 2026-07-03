@@ -71,7 +71,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case general    = "Tổng quan"
     case keyboard   = "Bàn phím"
     case macro      = "Macro"
-    case clipboard  = "Clipboard"
     case apps       = "Ứng dụng"
     case advanced   = "Nâng cao"
     case about      = "Giới thiệu"
@@ -83,7 +82,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general:   return "slider.horizontal.3"
         case .keyboard:  return "keyboard"
         case .macro:     return "doc.text.magnifyingglass"
-        case .clipboard: return "doc.on.clipboard"
         case .apps:      return "wrench.and.screwdriver"
         case .advanced:  return "gearshape.2"
         case .about:     return "info.circle"
@@ -123,7 +121,6 @@ struct SettingsView: View {
                 case .general:   GeneralPane()
                 case .keyboard:  KeyboardPane()
                 case .macro:     MacroPane()
-                case .clipboard: ClipboardPane()
                 case .apps:      AppsPane()
                 case .advanced:  AdvancedPane()
                 case .about:     AboutPane()
@@ -382,255 +379,6 @@ struct GeneralPane: View {
     }
 }
 
-// MARK: - Clipboard Pane
-
-struct ClipboardPane: View {
-    @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardHistoryEnabled: Bool = true
-    @AppStorage(DefaultsKey.clipboardMaxEntries) private var clipboardMaxEntries: Int = 10
-    @AppStorage(DefaultsKey.clipboardAutoSplitEnabled) private var clipboardAutoSplitEnabled: Bool = false
-    @AppStorage(DefaultsKey.clipboardSplitDelimiter) private var clipboardSplitDelimiter: String = "newline"
-    @AppStorage(DefaultsKey.clipboardSplitMinLength) private var clipboardSplitMinLength: Int = 3
-    @StateObject private var clipboardManager = ClipboardManager.shared
-
-    var body: some View {
-        PaneScroll {
-            PaneSection("Cài đặt") {
-                SettingsCard {
-                    SToggleRow("doc.on.clipboard",
-                                "Ghi lại lịch sử copy",
-                                "Lưu các nội dung đã sao chép để sử dụng lại nhanh chóng",
-                                $clipboardHistoryEnabled)
-                }
-
-                if clipboardHistoryEnabled {
-                    SettingsCard {
-                        HStack(spacing: 14) {
-                            Image(systemName: "number")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 24)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Số mục tối đa")
-                                    .font(.system(size: 13, weight: .medium))
-                                Text("Giới hạn số lượng nội dung được lưu (1-99)")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Button {
-                                    if clipboardMaxEntries > 1 {
-                                        clipboardMaxEntries -= 1
-                                    }
-                                } label: {
-                                    Image(systemName: "minus")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .frame(width: 22, height: 22)
-                                }
-                                .buttonStyle(.plain)
-                                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                                .disabled(clipboardMaxEntries <= 1)
-
-                                Text("\(clipboardMaxEntries)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .monospacedDigit()
-                                    .frame(width: 28)
-
-                                Button {
-                                    if clipboardMaxEntries < 99 {
-                                        clipboardMaxEntries += 1
-                                    }
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .frame(width: 22, height: 22)
-                                }
-                                .buttonStyle(.plain)
-                                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                                .disabled(clipboardMaxEntries >= 99)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                    }
-
-                    SettingsCard {
-                        SToggleRow("scissors",
-                                    "Tự động tách nội dung",
-                                    "Tách khối văn bản thành nhiều mục riêng biệt",
-                                    $clipboardAutoSplitEnabled)
-                    }
-
-                    if clipboardAutoSplitEnabled {
-                        SettingsCard {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack(spacing: 14) {
-                                    Image(systemName: "line.3.horizontal")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 24)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("Ngắt theo")
-                                            .font(.system(size: 13, weight: .medium))
-                                        Text("Ký tự phân cách giữa các mục")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                                HStack(spacing: 1) {
-                                    delimiterPill("Dòng mới", "newline")
-                                    delimiterPill("Dấu phẩy", "comma")
-                                    delimiterPill("Dấu chấm phẩy", "semicolon")
-                                }
-                                .padding(2)
-                                .background(.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 11)
-                        }
-
-                        SettingsCard {
-                            HStack(spacing: 14) {
-                                Image(systemName: "textformat.123")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Độ dài tối thiểu")
-                                        .font(.system(size: 13, weight: .medium))
-                                    Text("Bỏ qua mục ngắn hơn giới hạn này")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    Button {
-                                        if clipboardSplitMinLength > 1 {
-                                            clipboardSplitMinLength -= 1
-                                        }
-                                    } label: {
-                                        Image(systemName: "minus")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .frame(width: 22, height: 22)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                                    .disabled(clipboardSplitMinLength <= 1)
-
-                                    Text("\(clipboardSplitMinLength)")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .monospacedDigit()
-                                        .frame(width: 28)
-
-                                    Button {
-                                        if clipboardSplitMinLength < 50 {
-                                            clipboardSplitMinLength += 1
-                                        }
-                                    } label: {
-                                        Image(systemName: "plus")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .frame(width: 22, height: 22)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                                    .disabled(clipboardSplitMinLength >= 50)
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 11)
-                        }
-                    }
-                }
-            }
-
-            if clipboardHistoryEnabled {
-                PaneSection("Lịch sử") {
-                    SettingsCard {
-                        HStack {
-                            Text("Nội dung")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(clipboardManager.history.count) / \(clipboardMaxEntries) mục")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.primary.opacity(0.04))
-
-                        if clipboardManager.history.isEmpty {
-                            Text("Chưa có nội dung nào")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 20)
-                        } else {
-                            ScrollView {
-                                VStack(spacing: 0) {
-                                    ForEach(Array(clipboardManager.history.enumerated()), id: \.offset) { idx, item in
-                                        SCardDivider()
-                                        HStack(spacing: 10) {
-                                            Text(clipText(item))
-                                                .font(.system(size: 12))
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Button {
-                                                clipboardManager.remove(at: idx)
-                                            } label: {
-                                                Image(systemName: "trash")
-                                                    .font(.system(size: 11))
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 9)
-                                    }
-                                }
-                            }
-                            .frame(maxHeight: 240)
-                        }
-                    }
-
-                    HStack {
-                        Spacer()
-                        Button {
-                            clipboardManager.clearHistory()
-                        } label: {
-                            Label("Xóa tất cả", systemImage: "trash")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.red)
-                        .disabled(clipboardManager.history.isEmpty)
-                    }
-                }
-            }
-        }
-    }
-
-    private func clipText(_ text: String) -> String {
-        if text.count <= 60 { return text }
-        return String(text.prefix(60)) + "…"
-    }
-
-    private func delimiterPill(_ label: String, _ tag: String) -> some View {
-        let active = clipboardSplitDelimiter == tag
-        return Button { clipboardSplitDelimiter = tag } label: {
-            Text(label)
-                .font(.system(size: 11, weight: active ? .semibold : .regular))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background(active ? Color.accentColor : .clear,
-                             in: RoundedRectangle(cornerRadius: 5))
-                .foregroundStyle(active ? .white : .primary)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - Keyboard Pane
 
 struct KeyboardPane: View {
@@ -752,6 +500,11 @@ struct MacroPane: View {
 
 struct AdvancedPane: View {
     @AppStorage(DefaultsKey.modernOrthography) private var modernOrthography: Bool = true
+    @AppStorage(DefaultsKey.quickTelex) private var quickTelex: Bool = false
+    @AppStorage(DefaultsKey.quickStart) private var quickStart: Bool = false
+    @AppStorage(Logger.keystrokeTraceKey) private var keystrokeTrace: Bool = false
+    @State private var showShareSheet = false
+    @State private var diagnosticsURL: URL?
 
     var body: some View {
         PaneScroll {
@@ -759,8 +512,23 @@ struct AdvancedPane: View {
                 SettingsCard {
                     SToggleRow("book.closed",
                                 "Chính tả hiện đại",
-                                "Hỗ trợ quy tắc chính tả cập nhật mới nhất của Tiếng Việt",
+                                "Bật: hoas → hoá (quy tắc mới). Tắt: hoas → hoà (chính tả truyền thống).",
                                 $modernOrthography)
+                }
+            }
+
+            PaneSection("Gõ tắt Telex") {
+                SettingsCard {
+                    SToggleRow("bolt.fill",
+                                "Quick Telex (gõ kép)",
+                                "Gõ đôi phụ âm: cc→ch, gg→gi, hh→nh, kk→kh, nn→ng, qq→qu, pp→ph, tt→th.",
+                                $quickTelex)
+                }
+                SettingsCard {
+                    SToggleRow("bolt",
+                                "Quick Start (gõ nhanh)",
+                                "j→gi, f→ph, w→qu ở đầu từ. Tiện khi gõ nhanh.",
+                                $quickStart)
                 }
             }
 
@@ -813,7 +581,67 @@ struct AdvancedPane: View {
                     .buttonStyle(.plain)
                 }
             }
+
+            PaneSection("Chẩn đoán") {
+                SettingsCard {
+                    SToggleRow("keyboard",
+                                "Ghi keystroke trace",
+                                "Ghi lại mỗi phím gõ để gửi báo cáo lỗi. Tắt sau khi gửi log.",
+                                $keystrokeTrace)
+                }
+                SettingsCard {
+                    Button {
+                        if let url = Logger.shared.writeDiagnosticsToTempFile() {
+                            diagnosticsURL = url
+                            showShareSheet = true
+                        }
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "envelope")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Gửi log chẩn đoán")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Text("Tạo file .txt chứa log + thông tin hệ thống để chia sẻ")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(14)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
+        .background(SharingServicePickerShareSheet(
+            isPresented: $showShareSheet,
+            items: diagnosticsURL.map { [$0] } ?? []
+        ))
+    }
+}
+
+/// Wraps `NSSharingServicePicker` so it can be triggered from SwiftUI.
+private struct SharingServicePickerShareSheet: NSViewRepresentable {
+    @Binding var isPresented: Bool
+    let items: [Any]
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard isPresented, !items.isEmpty else { return }
+        let picker = NSSharingServicePicker(items: items)
+        picker.show(relativeTo: nsView.bounds, of: nsView, preferredEdge: .minY)
+        DispatchQueue.main.async { isPresented = false }
     }
 }
 

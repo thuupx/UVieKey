@@ -68,6 +68,11 @@ final class EventTap: ObservableObject {
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    /// The runloop that hosts the `CGEventTap` callback. Tracked so `stop()`
+    /// can remove the source from the *correct* runloop instead of the caller's
+    /// runloop (Bug #8: removing from the wrong runloop is a no-op and leaves
+    /// the tap firing into a deallocated `self`, causing occasional crashes).
+    private var tapRunLoop: CFRunLoop?
     private let _engine = EngineBridge()
     var engine: EngineBridge { _engine }
     private let eventSource: CGEventSource?
@@ -90,6 +95,16 @@ final class EventTap: ObservableObject {
     private var fnHandledByKeyEvent = false
     private var lastToggleTime: Date?
 
+    /// Retry state for `start()` (Bug #1, #6, #10). After a fresh login or
+    /// onboarding, `AXIsProcessTrustedWithOptions` can return true from a
+    /// stale cache while `CGEvent.tapCreate` still fails — the accessibility
+    /// grant has not yet propagated to the event-tap subsystem. We retry with
+    /// exponential backoff for up to 60s, re-checking trust each attempt,
+    /// and stop retrying once the tap is created or the engine is stopped.
+    private var startRetryWorkItem: DispatchWorkItem?
+    private static let startRetryMaxAttempts = 8
+    private static let startRetryDelays: [TimeInterval] = [0.5, 1, 1.5, 2, 3, 5, 8, 10]
+
     /// Auto-capitalize state: track if we're at the start of a sentence
     private var isAtSentenceStart = true
 
@@ -97,15 +112,9 @@ final class EventTap: ObservableObject {
     private var engineResetObserver: NSObjectProtocol?
 
     /// Performance logging for keystroke latency (only logs slow / high-event paths).
-    private let perfLogHandle: FileHandle? = {
-        let path = "/tmp/uviekey_perf.log"
-        if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil, attributes: nil)
-        }
-        guard let handle = FileHandle(forWritingAtPath: path) else { return nil }
-        handle.seekToEndOfFile()
-        return handle
-    }()
+    /// Backed by `Logger.shared` so concurrent writes are serialized on a
+    /// dedicated queue (Bug #8: previous `FileHandle` was written from the
+    /// event-tap runloop without locking, which could crash).
     private var perfEventCount = 0
     private var perfStartTime: CFAbsoluteTime = 0
 
@@ -133,12 +142,26 @@ final class EventTap: ObservableObject {
 
     func start() {
         guard tap == nil else { return }
+        // Cancel any pending retry before a fresh attempt.
+        startRetryWorkItem?.cancel()
+        startRetryWorkItem = nil
+
         guard AccessibilityChecker.isTrusted else {
+            Logger.shared.warn("EventTap.start: Accessibility not granted, scheduling retry")
             print("EventTap: Accessibility not granted")
+            scheduleStartRetry(attempt: 0)
             return
         }
 
         appDetector.start()
+        Logger.shared.info("EventTap.start: creating CGEventTap")
+        startTap()
+    }
+
+    /// Attempts to create the `CGEventTap`. On failure, schedules a retry with
+    /// exponential backoff. Called from `start()` and from the retry path.
+    private func startTap() {
+        guard tap == nil else { return }
 
         let callback: CGEventTapCallBack = { proxy, type, event, refcon in
             guard let refcon else { return Unmanaged.passRetained(event) }
@@ -163,31 +186,78 @@ final class EventTap: ObservableObject {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
+            Logger.shared.error("EventTap.startTap: CGEvent.tapCreate returned nil — accessibility grant may not be active yet, scheduling retry")
             print("EventTap: Failed to create tap")
+            scheduleStartRetry(attempt: 0)
             return
         }
 
         self.tap = newTap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0)
         self.runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-        CGEvent.tapEnable(tap: newTap, enable: true)
-
-        DispatchQueue.global(qos: .userInteractive).async {
+        // Spin up a dedicated runloop on a background queue and remember it
+        // so `stop()` can remove the source from the *same* runloop.
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            let runLoop = CFRunLoopGetCurrent()
+            CFRunLoopAddSource(runLoop, source, .commonModes)
+            self?.tapRunLoop = runLoop
+            CGEvent.tapEnable(tap: newTap, enable: true)
+            // Success — clear any pending retry and notify the host.
+            Logger.shared.info("EventTap: tap created successfully")
+            NotificationCenter.default.post(name: .eventTapDidStart, object: nil)
             CFRunLoopRun()
         }
     }
 
+    /// Schedule a `start()` retry after `delay`. Re-checks accessibility trust
+    /// before each attempt so a user granting permission mid-retry is picked up.
+    private func scheduleStartRetry(attempt: Int) {
+        guard attempt < Self.startRetryMaxAttempts else {
+            Logger.shared.error("EventTap: gave up after \(Self.startRetryMaxAttempts) retry attempts — user must restart UVieKey after granting Accessibility")
+            NotificationCenter.default.post(name: .eventTapStartFailed, object: nil)
+            return
+        }
+        let delay = Self.startRetryDelays[min(attempt, Self.startRetryDelays.count - 1)]
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.tap == nil else { return }
+            guard AccessibilityChecker.isTrusted else {
+                Logger.shared.warn("EventTap: still not trusted on retry #\(attempt + 1)")
+                self.scheduleStartRetry(attempt: attempt + 1)
+                return
+            }
+            Logger.shared.info("EventTap: retry #\(attempt + 1) creating tap")
+            self.appDetector.start()
+            self.startTap()
+        }
+        startRetryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
     func stop() {
+        startRetryWorkItem?.cancel()
+        startRetryWorkItem = nil
+        let tap = self.tap
+        let source = runLoopSource
+        let runLoop = tapRunLoop
+        self.tap = nil
+        self.runLoopSource = nil
+        self.tapRunLoop = nil
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        if let source, let runLoop {
+            // `CFRunLoopRemoveSource` is thread-safe per Apple docs; the
+            // source is invalidated and won't fire its callback into a
+            // deallocated `self`. Then stop the runloop so the background
+            // thread exits cleanly (Bug #8: previously we removed from
+            // `CFRunLoopGetCurrent()` which was the *caller's* runloop, not
+            // the tap's — leaving the source installed on the wrong runloop
+            // and the callback still firing).
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
+            CFRunLoopStop(runLoop)
         }
-        tap = nil
-        runLoopSource = nil
         appDetector.stop()
+        Logger.shared.info("EventTap.stop: tap released")
     }
 
     // MARK: - Helpers
@@ -218,20 +288,10 @@ final class EventTap: ObservableObject {
         let elapsedMs = (CFAbsoluteTimeGetCurrent() - perfStartTime) * 1000
         // Log anything that takes >5ms or posts >4 synthetic events (normal path is 1 event).
         guard elapsedMs > 5.0 || perfEventCount > 4 else { return }
-        let line = String(
-            format: "[%.3f ms] %@ keyCode=%lld events=%d app=%@",
+        Logger.shared.debug(String(
+            format: "[perf %.3f ms] %@ keyCode=%lld events=%d app=%@",
             elapsedMs, label, keyCode, perfEventCount, app
-        )
-        perfLog(line)
-    }
-
-    private func perfLog(_ message: String) {
-        guard let handle = perfLogHandle else { return }
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let line = "\(timestamp) \(message)\n"
-        if let data = line.data(using: .utf8) {
-            try? handle.write(contentsOf: data)
-        }
+        ))
     }
     
     // MARK: - Settings
@@ -244,6 +304,8 @@ final class EventTap: ObservableObject {
         _engine.setInputMethod(method == "vni" ? .vni : .telex)
         _engine.setModernOrthography(defaults.bool(forKey: DefaultsKey.modernOrthography))
         _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
+        _engine.setQuickTelex(defaults.bool(forKey: DefaultsKey.quickTelex))
+        _engine.setQuickStart(defaults.bool(forKey: DefaultsKey.quickStart))
     }
 
     /// Observe runtime setting changes so toggling Quick Telex, Modern
@@ -353,8 +415,11 @@ final class EventTap: ObservableObject {
         // DEBUG: Trace ghost character issue
         if type == .keyDown {
             let composing = _engine.currentOutput()
-            #if DEBUG
             let committed = _engine.committedText()
+            if !composing.isEmpty || !committed.isEmpty {
+                Logger.shared.keystroke("keydown keyCode=\(keyCode) composing='\(composing)' committed='\(committed)' app=\(app)")
+            }
+            #if DEBUG
             if !composing.isEmpty || !committed.isEmpty {
                 NSLog("[UVieKey] keystroke - keyCode: \(keyCode), composing: '\(composing)', committed: '\(committed)'")
             }
@@ -595,6 +660,7 @@ final class EventTap: ObservableObject {
         let transformedChar = applyAutoCapitalize(to: firstChar)
 
         let (bs, out) = _engine.feed(char: transformedChar)
+        Logger.shared.keystroke("feed char='\(transformedChar)' keyCode=\(keyCode) bs=\(bs) out='\(out)' compound=\(isCompoundApp) chromium=\(isChromium)")
         #if DEBUG
         let composingFeed = _engine.currentOutput()
         let committedFeed = _engine.committedText()
