@@ -277,6 +277,13 @@ final class EventTap: ObservableObject {
         breakKeyCodes.contains(keyCode)
     }
 
+    /// Arrow key codes: left=123, right=124, down=125, up=126.
+    /// These move the cursor within text, so the engine must reset (not commit)
+    /// to avoid applying stale composing state at the new cursor position.
+    func isArrowKey(_ keyCode: Int64) -> Bool {
+        keyCode == 123 || keyCode == 124 || keyCode == 125 || keyCode == 126
+    }
+
     var isCompoundApp: Bool {
         checkIsCompoundApp(appDetector.bundleID)
     }

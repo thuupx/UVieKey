@@ -228,6 +228,17 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
         if type == .keyDown {
+            // Arrow keys move the cursor within text. The diff engine tracks
+            // text only at the insertion point; once the cursor moves, our
+            // on-screen model is invalid. Reset (don't commit) so stale
+            // composing state cannot be applied at the new cursor position.
+            // Enter/Tab/Escape/etc. are true word boundaries → commit.
+            if isArrowKey(keyCode) {
+                _engine.reset()
+                perfEnd("break-arrow", keyCode: keyCode, app: app)
+                return Unmanaged.passRetained(event)
+            }
+
             // Check for macro expansion first
             if macroManager.isEnabled() {
                 let currentText = getCurrentText()

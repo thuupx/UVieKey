@@ -10,6 +10,7 @@ struct MenuBarPopoverView: View {
     @AppStorage(DefaultsKey.uppercaseFirstChar) private var uppercaseFirstChar: Bool = false
     @AppStorage(DefaultsKey.macroEnabled)       private var macroEnabled: Bool = false
     @AppStorage(DefaultsKey.relaxedCoda)        private var relaxedCoda: Bool = false
+    @AppStorage(DefaultsKey.modernOrthography)  private var modernOrthography: Bool = false
     @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = true
     @StateObject private var layoutMonitor = KeyboardLayoutMonitor.shared
 
@@ -142,6 +143,7 @@ struct MenuBarPopoverView: View {
             rowLabel("TÍNH NĂNG")
             toggleRow("brain","Nhớ ngôn ngữ từng app",      $smartSwitchKey)
             toggleRow("textformat",                  "Viết hoa đầu câu",           $uppercaseFirstChar)
+            toggleRow("character.textbox",           "Chính tả hiện đại",          $modernOrthography)
             rowLabel("GÕ NHANH")
             toggleRow("g.circle",                    "Viết tắt g→ng, h→nh",      $relaxedCoda)
             toggleRow("doc.text",                    "Macro văn bản",            $macroEnabled)
