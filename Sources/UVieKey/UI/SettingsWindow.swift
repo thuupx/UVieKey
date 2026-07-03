@@ -503,8 +503,6 @@ struct AdvancedPane: View {
     @AppStorage(DefaultsKey.quickTelex) private var quickTelex: Bool = false
     @AppStorage(DefaultsKey.quickStart) private var quickStart: Bool = false
     @AppStorage(Logger.keystrokeTraceKey) private var keystrokeTrace: Bool = false
-    @State private var showShareSheet = false
-    @State private var diagnosticsURL: URL?
 
     var body: some View {
         PaneScroll {
@@ -592,8 +590,13 @@ struct AdvancedPane: View {
                 SettingsCard {
                     Button {
                         if let url = Logger.shared.writeDiagnosticsToTempFile() {
-                            diagnosticsURL = url
-                            showShareSheet = true
+                            // Reveal the diagnostics file in Finder so the user
+                            // can drag it into Mail / AirDrop / Messages.
+                            // Avoids NSSharingServicePicker (which caused an
+                            // over-release crash on macOS 26 — the picker is
+                            // not retained and its blocks get freed during
+                            // the CA transaction commit).
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
                         }
                     } label: {
                         HStack(spacing: 14) {
@@ -605,7 +608,7 @@ struct AdvancedPane: View {
                                 Text("Gửi log chẩn đoán")
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(.primary)
-                                Text("Tạo file .txt chứa log + thông tin hệ thống để chia sẻ")
+                                Text("Tạo file .txt chứa log + thông tin hệ thống, mở trong Finder để chia sẻ")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                             }
@@ -620,28 +623,6 @@ struct AdvancedPane: View {
                 }
             }
         }
-        .background(SharingServicePickerShareSheet(
-            isPresented: $showShareSheet,
-            items: diagnosticsURL.map { [$0] } ?? []
-        ))
-    }
-}
-
-/// Wraps `NSSharingServicePicker` so it can be triggered from SwiftUI.
-private struct SharingServicePickerShareSheet: NSViewRepresentable {
-    @Binding var isPresented: Bool
-    let items: [Any]
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        guard isPresented, !items.isEmpty else { return }
-        let picker = NSSharingServicePicker(items: items)
-        picker.show(relativeTo: nsView.bounds, of: nsView, preferredEdge: .minY)
-        DispatchQueue.main.async { isPresented = false }
     }
 }
 

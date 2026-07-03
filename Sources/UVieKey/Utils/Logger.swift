@@ -42,7 +42,7 @@ final class Logger {
             currentSize = size
         }
         fileHandle = try? FileHandle(forWritingTo: logURL)
-        try? fileHandle?.seekToEnd()
+        _ = try? fileHandle?.seekToEnd()
     }
 
     // MARK: - Public logging API
@@ -141,7 +141,7 @@ final class Logger {
         if currentSize > maxFileSize {
             rotate()
         }
-        try? fileHandle?.seekToEnd()
+        _ = try? fileHandle?.seekToEnd()
         try? fileHandle?.write(contentsOf: data)
     }
 

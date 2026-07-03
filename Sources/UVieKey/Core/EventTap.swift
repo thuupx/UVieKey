@@ -195,18 +195,22 @@ final class EventTap: ObservableObject {
         self.tap = newTap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0)
         self.runLoopSource = source
-        // Spin up a dedicated runloop on a background queue and remember it
-        // so `stop()` can remove the source from the *same* runloop.
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-            let runLoop = CFRunLoopGetCurrent()
-            CFRunLoopAddSource(runLoop, source, .commonModes)
-            self?.tapRunLoop = runLoop
-            CGEvent.tapEnable(tap: newTap, enable: true)
-            // Success — clear any pending retry and notify the host.
-            Logger.shared.info("EventTap: tap created successfully")
-            NotificationCenter.default.post(name: .eventTapDidStart, object: nil)
-            CFRunLoopRun()
-        }
+        // Add the source to the MAIN runloop (same as the original design).
+        // The CGEventTap callback fires on the runloop that owns the source;
+        // keeping it on main avoids thread-safety issues with AppKit state
+        // accessed inside `handle()` (NSApp, NSEvent, AXUIElement, etc.).
+        // The main runloop is already driven by NSApplication.run(), so no
+        // background CFRunLoopRun() is needed.
+        let mainRunLoop = CFRunLoopGetMain()
+        CFRunLoopAddSource(mainRunLoop, source, .commonModes)
+        self.tapRunLoop = mainRunLoop
+        CGEvent.tapEnable(tap: newTap, enable: true)
+
+        // Success — clear any pending retry and notify the host.
+        startRetryWorkItem?.cancel()
+        startRetryWorkItem = nil
+        Logger.shared.info("EventTap: tap created successfully")
+        NotificationCenter.default.post(name: .eventTapDidStart, object: nil)
     }
 
     /// Schedule a `start()` retry after `delay`. Re-checks accessibility trust
@@ -226,7 +230,7 @@ final class EventTap: ObservableObject {
                 return
             }
             Logger.shared.info("EventTap: retry #\(attempt + 1) creating tap")
-            self.appDetector.start()
+            // appDetector.start() is already called in start(); don't double-start.
             self.startTap()
         }
         startRetryWorkItem = workItem
@@ -236,26 +240,15 @@ final class EventTap: ObservableObject {
     func stop() {
         startRetryWorkItem?.cancel()
         startRetryWorkItem = nil
-        let tap = self.tap
-        let source = runLoopSource
-        let runLoop = tapRunLoop
-        self.tap = nil
-        self.runLoopSource = nil
-        self.tapRunLoop = nil
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
-        if let source, let runLoop {
-            // `CFRunLoopRemoveSource` is thread-safe per Apple docs; the
-            // source is invalidated and won't fire its callback into a
-            // deallocated `self`. Then stop the runloop so the background
-            // thread exits cleanly (Bug #8: previously we removed from
-            // `CFRunLoopGetCurrent()` which was the *caller's* runloop, not
-            // the tap's — leaving the source installed on the wrong runloop
-            // and the callback still firing).
-            CFRunLoopRemoveSource(runLoop, source, .commonModes)
-            CFRunLoopStop(runLoop)
+        if let runLoopSource, let tapRunLoop {
+            CFRunLoopRemoveSource(tapRunLoop, runLoopSource, .commonModes)
         }
+        tap = nil
+        runLoopSource = nil
+        tapRunLoop = nil
         appDetector.stop()
         Logger.shared.info("EventTap.stop: tap released")
     }

@@ -102,19 +102,6 @@ struct OnboardingView: View {
             }
         }
     }
-
-    // Re-check both permissions on appear and when the view becomes active.
-    // On macOS 26 the cached `AXIsProcessTrusted` value lags the user's
-    // toggle in System Settings, so polling is required (Bug #10).
-    private func refreshTrust() {
-        AccessibilityChecker.pollForAccess(timeout: 30) { granted in
-            DispatchQueue.main.async {
-                if isTrusted != granted {
-                    withAnimation(.spring()) { isTrusted = granted }
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Step 0: Welcome
