@@ -49,19 +49,57 @@ final class AXTextInjector {
     /// Used by EventTap as a hybrid fallback: try AX first, then CGEvent.
     /// The engine has already processed the keystroke — this only handles
     /// the visual update.
+    ///
+    /// SAFETY: AX `setTextValue` replaces the ENTIRE text field content.
+    /// On web contenteditable (Facebook, Google Docs, etc.), this can
+    /// corrupt the field or silently fail. We only use AX for fields
+    /// where we can verify the set succeeded by reading back the value.
     func tryInject(bs: Int, out: String) -> Bool {
         guard let element = getFocusedTextElement() else { return false }
-        return tryInject(bs: bs, out: out, element: element)
+        guard let current = getTextValue(element) else { return false }
+
+        // SAFETY CHECK: only use AX for short text fields (address bar,
+        // search fields, Notes). For long text (web forms, editors),
+        // setTextValue would overwrite the entire field — dangerous.
+        // Fall back to CGEvent for fields longer than 500 chars.
+        if current.count > 500 {
+            return false
+        }
+
+        var newText = current
+        for _ in 0..<bs { newText = String(newText.dropLast()) }
+        newText += out
+
+        // Set text value and verify it took effect.
+        let setOK = setTextValue(element, text: newText)
+        if !setOK {
+            return false
+        }
+
+        // Verify: read back and check the suffix matches.
+        // This catches silent AX failures on web contenteditable.
+        guard let after = getTextValue(element), after.hasSuffix(newText) else {
+            // AX set failed silently — revert if possible and fall back.
+            setTextValue(element, text: current)
+            return false
+        }
+
+        setCursorToEnd(element, length: newText.count)
+        return true
     }
 
     private func tryInject(bs: Int, out: String, element: AXUIElement) -> Bool {
+        // Legacy path used by feed()/backspace() — delegates to public tryInject.
+        // Kept for AX-mode apps (Spotlight) that use the dedicated AXTextInjector.
         guard let current = getTextValue(element) else { return false }
 
         var newText = current
         for _ in 0..<bs { newText = String(newText.dropLast()) }
         newText += out
 
-        setTextValue(element, text: newText)
+        let setOK = setTextValue(element, text: newText)
+        guard setOK else { return false }
+
         setCursorToEnd(element, length: newText.count)
         return true
     }
@@ -82,7 +120,7 @@ final class AXTextInjector {
                 for _ in 0..<abbreviationLength { newText = String(newText.dropLast()) }
                 newText += expansion
                 
-                setTextValue(element, text: newText)
+                _ = setTextValue(element, text: newText)
                 setCursorToEnd(element, length: newText.count)
                 engine.reset()
                 return
@@ -124,8 +162,9 @@ final class AXTextInjector {
         return value as? String
     }
 
-    private func setTextValue(_ element: AXUIElement, text: String) {
-        AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef)
+    private func setTextValue(_ element: AXUIElement, text: String) -> Bool {
+        let result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef)
+        return result == .success
     }
 
     private func setCursorToEnd(_ element: AXUIElement, length: Int) {
