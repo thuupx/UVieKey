@@ -25,8 +25,8 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 ## Hiệu năng
 
 - **DMG**: 1.7 MB (release pipeline, universal)
-- **RAM**: ~30 MB (Activity Monitor)
-- **CPU**: ~0% khi gõ
+- **RAM**: ~30 MB (khi mở Setting window), ~14 MB (khi họat động background)
+- **CPU**: ~0.3% khi gõ
 
 ## Cài đặt
 
