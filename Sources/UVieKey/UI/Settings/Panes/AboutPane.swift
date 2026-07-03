@@ -43,22 +43,52 @@ struct AboutPane: View {
                     .lineSpacing(5)
                     .frame(maxWidth: 360)
 
-                // Manual update download button
-                if updateChecker.hasUpdate, let url = updateChecker.latestReleaseURL {
-                    Link(destination: url) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Tải bản cập nhật v\(updateChecker.latestVersion ?? "")")
-                                .font(.system(size: 13, weight: .semibold))
+                // Update status block
+                VStack(spacing: 10) {
+                    // Manual update download button (when an update is available)
+                    if updateChecker.hasUpdate, let url = updateChecker.latestReleaseURL {
+                        Link(destination: url) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Tải bản cập nhật v\(updateChecker.latestVersion ?? "")")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.white)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
-                        .foregroundStyle(.white)
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: 260)
+                    } else if let last = updateChecker.lastChecked {
+                        Text("Đã kiểm tra: \(last.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    // Manual "check now" button
+                    Button {
+                        updateChecker.checkNow()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if updateChecker.isChecking {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            Text(updateChecker.isChecking ? "Đang kiểm tra…" : "Kiểm tra cập nhật")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .frame(maxWidth: 260)
+                        .padding(.vertical, 8)
+                        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .frame(maxWidth: 260)
+                    .disabled(updateChecker.isChecking)
                 }
             }
 

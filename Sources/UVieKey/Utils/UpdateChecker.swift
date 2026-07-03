@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Polls the GitHub releases API every 2 hours and publishes whether a newer
+/// Polls the GitHub releases API every 24 hours and publishes whether a newer
 /// version than the running app is available.
 ///
 /// The check is best-effort and silent: any network/parse failure simply
@@ -16,11 +16,13 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latestReleaseURL: URL?
     /// Last successful check timestamp.
     @Published private(set) var lastChecked: Date?
+    /// True while a check is in flight (drives the About pane spinner).
+    @Published private(set) var isChecking: Bool = false
 
     /// GitHub repo path used for the API calls.
     private let repo = "thuupx/UVieKey"
-    /// Poll interval — 2 hours.
-    private let interval: TimeInterval = 2 * 60 * 60
+    /// Poll interval — 24 hours.
+    private let interval: TimeInterval = 24 * 60 * 60
     private var timer: Timer?
 
     private init() {}
@@ -53,6 +55,9 @@ final class UpdateChecker: ObservableObject {
     // MARK: - Fetch
 
     private func fetchLatestRelease() async {
+        guard !isChecking else { return }
+        isChecking = true
+        defer { isChecking = false }
         guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else { return }
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
