@@ -21,7 +21,11 @@ final class AppContextDetector {
     func start() {
         update()
         DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            // 1.0s interval: app switches are infrequent, and each tick calls
+            // AXUIElementCopyAttributeValue + CGWindowListCopyWindowInfo (both
+            // expensive). 0.15s/0.3s caused unnecessary CPU + memory pressure.
+            // Spotlight visibility is also covered by this poll.
+            self.timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
                 self?.update()
             }
         }

@@ -10,10 +10,6 @@ final class AXTextInjector {
     private let engine: EngineBridge
     private let macroManager = MacroManager.shared
 
-    /// Cached focused element to avoid repeated lookups.
-    private weak var cachedElement: AXUIElement?
-    private var lastElementPID: pid_t = 0
-
     init(engine: EngineBridge) {
         self.engine = engine
     }

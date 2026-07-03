@@ -4,6 +4,10 @@ import Combine
 
 /// Per-app language/input-method memory.
 /// Stores a map of bundleID → packed state (language | codeTable) in NSUserDefaults.
+///
+/// Thread safety: all accesses (`state(for:)`, `setState(...)`) are from the
+/// main thread via `InputMethodManager.handleAppSwitch()`, which uses
+/// `.receive(on: DispatchQueue.main)`. Do not call from background threads.
 final class MemoryManager: ObservableObject {
     @Published var isEnabled: Bool {
         didSet {

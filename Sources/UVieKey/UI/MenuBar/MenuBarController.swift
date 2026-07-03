@@ -89,6 +89,7 @@ final class MenuBarController: ObservableObject {
         if let observer = defaultsObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        cancellables.removeAll()
     }
 
     // MARK: Icon - drawn as NSImage for pixel-perfect vertical centering

@@ -50,6 +50,10 @@ final class Logger {
         _ = try? fileHandle?.seekToEnd()
     }
 
+    deinit {
+        try? fileHandle?.close()
+    }
+
     // MARK: - Public logging API
 
     func info(_ message: String) { log(message, level: "INFO") }

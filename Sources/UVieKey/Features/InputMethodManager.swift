@@ -36,6 +36,10 @@ final class InputMethodManager: ObservableObject {
         observeEngineEnabledChanges()
     }
 
+    deinit {
+        cancellables.removeAll()
+    }
+
     func toggle() {
         isVietnamese.toggle()
         syncEngineEnabled()

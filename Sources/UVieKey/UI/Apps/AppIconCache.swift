@@ -9,7 +9,11 @@ final class AppIconCache {
     private let cache = NSCache<NSString, NSImage>()
 
     private init() {
-        cache.countLimit = 200
+        cache.countLimit = 100
+        // Cap total cache at ~20MB. Each 64x64 NSImage is ~16KB bitmap +
+        // representation overhead, so 100 images ≈ 1.6MB bitmap data.
+        // The limit is a safety net for unusually large icons.
+        cache.totalCostLimit = 20 * 1024 * 1024
     }
 
     func icon(for bundleID: String) -> NSImage? {
@@ -20,7 +24,9 @@ final class AppIconCache {
 
         let image = loadIcon(for: bundleID)
         if let image = image {
-            cache.setObject(image, forKey: key)
+            // Estimate cost from bitmap size (bytes per pixel * width * height).
+            let cost = Int(image.size.width * image.size.height) * 4
+            cache.setObject(image, forKey: key, cost: cost)
         }
         return image
     }
