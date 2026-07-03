@@ -14,14 +14,6 @@ final class MenuBarController: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var defaultsObserver: NSObjectProtocol?
 
-    var keepPopoverOpen: Bool {
-        get { UserDefaults.standard.bool(forKey: DefaultsKey.keepPopoverOpen) }
-        set {
-            UserDefaults.standard.set(newValue, forKey: DefaultsKey.keepPopoverOpen)
-            updatePopoverBehavior()
-        }
-    }
-
     var inputMethod: InputMethod {
         get { inputMethodManager?.inputMethod ?? .telex }
         set {
@@ -63,32 +55,14 @@ final class MenuBarController: ObservableObject {
     private func setupPopover() {
         let p = NSPopover()
         p.contentSize = NSSize(width: 280, height: 388)
-        p.behavior = keepPopoverOpen ? .applicationDefined : .transient
+        p.behavior = .transient
         p.contentViewController = NSHostingController(
             rootView: MenuBarPopoverView(controller: self)
         )
         popover = p
-
-        // Observe defaults changes
-        defaultsObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updatePopoverBehavior()
-            }
-        }
-    }
-
-    private func updatePopoverBehavior() {
-        popover?.behavior = keepPopoverOpen ? .applicationDefined : .transient
     }
 
     deinit {
-        if let observer = defaultsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         cancellables.removeAll()
     }
 

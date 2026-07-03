@@ -13,7 +13,6 @@ enum DefaultsKey {
     static let onboardingCompleted = "OnboardingCompleted"
     static let engineEnabled = "EngineEnabled"
     static let autoDisableOnNonLatinLayout = "AutoDisableOnNonLatinLayout"
-    static let keepPopoverOpen = "KeepPopoverOpen"
     static let quickTelex = "QuickTelex"
     static let quickStart = "QuickStart"
     static let customCompoundApps = "CustomCompoundApps"

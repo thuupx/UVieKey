@@ -22,6 +22,13 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 - macOS 13 Ventura trở lên
 - Apple Silicon hoặc Intel (universal binary)
 
+## Hiệu năng
+
+- **Binary**: 2.3 MB (release, arm64)
+- **Bundle**: 2.6 MB (`UVieKey.app`)
+- **RAM**: ~120 MB resident khi chạy (bao gồm Swift runtime, AppKit, Accessibility framework)
+- **CPU**: ~0% khi idle (event-driven, không polling)
+
 ## Cài đặt
 
 1. Tải `UVieKey-*-universal.dmg` từ [Releases](https://github.com/thuupx/UVieKey/releases).

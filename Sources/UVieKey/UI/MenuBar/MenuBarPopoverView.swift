@@ -11,7 +11,6 @@ struct MenuBarPopoverView: View {
     @AppStorage(DefaultsKey.macroEnabled)       private var macroEnabled: Bool = false
     @AppStorage(DefaultsKey.relaxedCoda)        private var relaxedCoda: Bool = false
     @AppStorage(DefaultsKey.autoDisableOnNonLatinLayout) private var autoDisableOnNonLatinLayout: Bool = true
-    @AppStorage(DefaultsKey.keepPopoverOpen)    private var keepPopoverOpen: Bool = false
     @StateObject private var layoutMonitor = KeyboardLayoutMonitor.shared
 
     var body: some View {
@@ -146,9 +145,6 @@ struct MenuBarPopoverView: View {
             rowLabel("GÕ NHANH")
             toggleRow("g.circle",                    "Viết tắt g→ng, h→nh",      $relaxedCoda)
             toggleRow("doc.text",                    "Macro văn bản",            $macroEnabled)
-
-            rowLabel("MENUBAR")
-            toggleRow("pin",                           "Giữ mở",                    $keepPopoverOpen)
 
             // Show when non-Latin layout detected
             if autoDisableOnNonLatinLayout && layoutMonitor.isNonLatinLayout {

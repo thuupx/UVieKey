@@ -72,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             DefaultsKey.inputMethod:        "telex",
             DefaultsKey.inputMethodHotkeyEnabled: true,
             DefaultsKey.autoDisableOnNonLatinLayout: true,
-            DefaultsKey.keepPopoverOpen: false,
             DefaultsKey.quickTelex:         false,
             DefaultsKey.quickStart:         false,
         ])
