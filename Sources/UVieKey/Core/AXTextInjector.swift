@@ -18,7 +18,9 @@ final class AXTextInjector {
 
     /// Feed a character. Returns true if AX injection succeeded.
     func feed(char: Character) -> Bool {
-        guard let element = getFocusedTextElement() else { return false }
+        guard let element = getFocusedTextElement() else {
+            return false
+        }
 
         let (bs, out) = engine.feed(char: char)
         // Check if engine processed the character (even if output is empty for literal chars)
@@ -28,12 +30,25 @@ final class AXTextInjector {
             return false
         }
 
-        return tryInject(bs: bs, out: out, element: element)
+        if tryInject(bs: bs, out: out, element: element) {
+            return true
+        }
+        // AX injection failed but engine already consumed the char.
+        // Only reset if engine state diverged from screen (bs > 0 or
+        // output differs from raw char). If output == char and bs == 0,
+        // engine just appended a literal — screen will get it from the
+        // passed-through OS event, so no desync.
+        if bs > 0 || out != String(char) {
+            engine.reset()
+        }
+        return false
     }
 
     /// Backspace. Returns true if AX injection succeeded.
     func backspace() -> Bool {
-        guard let element = getFocusedTextElement() else { return false }
+        guard let element = getFocusedTextElement() else {
+            return false
+        }
 
         let (bs, out) = engine.backspace()
         // Inject if: we have backspaces, we have output, or engine is still composing
@@ -42,7 +57,13 @@ final class AXTextInjector {
             return false
         }
 
-        return tryInject(bs: bs, out: out, element: element)
+        if tryInject(bs: bs, out: out, element: element) {
+            return true
+        }
+        // AX injection failed but engine already processed backspace.
+        // Reset to prevent desync — backspace always changes engine state.
+        engine.reset()
+        return false
     }
 
     /// Try to inject (bs, out) via AX. Returns true if successful.
@@ -55,7 +76,9 @@ final class AXTextInjector {
     }
 
     private func tryInject(bs: Int, out: String, element: AXUIElement) -> Bool {
-        guard let current = getTextValue(element) else { return false }
+        guard let current = getTextValue(element) else {
+            return false
+        }
 
         var newText = current
         for _ in 0..<bs { newText = String(newText.dropLast()) }
@@ -63,7 +86,16 @@ final class AXTextInjector {
 
         setTextValue(element, text: newText)
         setCursorToEnd(element, length: newText.count)
-        return true
+
+        if let after = getTextValue(element) {
+            if after == newText {
+                return true
+            } else {
+                return false
+            }
+        } else {
+            return false
+        }
     }
 
     /// Commit on word boundary.
@@ -75,13 +107,13 @@ final class AXTextInjector {
             if let expansion = macroManager.findExpansion(for: currentText) {
                 guard let element = getFocusedTextElement() else { return }
                 guard let current = getTextValue(element) else { return }
-                
+
                 // Backspace the abbreviation
                 let abbreviationLength = currentText.count
                 var newText = current
                 for _ in 0..<abbreviationLength { newText = String(newText.dropLast()) }
                 newText += expansion
-                
+
                 setTextValue(element, text: newText)
                 setCursorToEnd(element, length: newText.count)
                 engine.reset()

@@ -7,12 +7,13 @@ extension EventTap {
     /// event type and key code.
     func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Re-enable the tap if the system disabled it (callback timeout,
-        // user input, system sleep). Without this, all keyboard input stops.
+        // system sleep). Don't re-enable if we intentionally disabled it
+        // for an excluded app — that would defeat the purpose.
         // kCGEventTapDisabledByTimeout = 0xFFFFFFFE,
         // kCGEventTapDisabledByUserInput = 0xFFFFFFFF
         let rawType = type.rawValue
         if rawType == 0xFFFFFFFE || rawType == 0xFFFFFFFF {
-            if let tap {
+            if let tap, !lastExcludedState {
                 CGEvent.tapEnable(tap: tap, enable: true)
                 Logger.shared.warn("EventTap: tap was disabled (rawType=\(rawType)), re-enabled")
             }
@@ -69,8 +70,23 @@ extension EventTap {
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
-        let app = appDetector.bundleID
+        var app = appDetector.bundleID
         perfBegin()
+
+        // Spotlight and other system UI overlays don't trigger
+        // didActivateApplicationNotification, so bundleID stays stale as
+        // the previous app. If the current bundleID isn't classified,
+        // do a fresh AX lookup on every keyDown. AX call is ~5ms and
+        // only runs for unclassified apps — classified apps (Notes,
+        // Safari, Chromium) skip it.
+        if type == .keyDown,
+           !cachedExcludedApps.contains(app),
+           !cachedCompoundApps.contains(app),
+           !cachedChromiumApps.contains(app),
+           !axApps.contains(app) {
+            appDetector.refreshBundleID()
+            app = appDetector.bundleID
+        }
 
         // Detect text-selection shortcuts. The diff engine tracks text at the
         // insertion point only; when the user selects text and types over it,
@@ -97,12 +113,17 @@ extension EventTap {
             _engine.reset()
         }
 
+        // Set needsAXRefresh on Cmd key down so the next keyDown after
+        // Cmd+Space (Spotlight) does a fresh AX bundleID lookup. Spotlight
+        // doesn't fire didActivateApplicationNotification, so without this
+        // the bundleID stays stale as the previous app and AX mode never
+        // activates. Cmd key comes as .flagsChanged, handled above.
         if (flags.contains(.maskCommand) || flags.contains(.maskControl) ||
            flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn)) && !isOptionBackspace {
             return Unmanaged.passRetained(event)
         }
 
-        // Pass through Command keys themselves
+        // Pass through Command keys themselves.
         if keyCode == 55 || keyCode == 54 {
             return Unmanaged.passRetained(event)
         }

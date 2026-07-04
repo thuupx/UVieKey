@@ -64,9 +64,9 @@ final class EventTap: ObservableObject {
     /// and can cause the callback to exceed the system's timeout, leading
     /// to the tap being disabled — which blocks all keyboard input including
     /// copy/paste. Cache the sets and reload only on settings change.
-    private var cachedExcludedApps: Set<String> = []
-    private var cachedCompoundApps: Set<String> = []
-    private var cachedChromiumApps: Set<String> = []
+    var cachedExcludedApps: Set<String> = []
+    var cachedCompoundApps: Set<String> = []
+    var cachedChromiumApps: Set<String> = []
     /// Tracks whether the CGEventTap is currently disabled for an excluded app.
     /// Prevents redundant `CGEvent.tapEnable` calls on every app switch.
     var lastExcludedState = false

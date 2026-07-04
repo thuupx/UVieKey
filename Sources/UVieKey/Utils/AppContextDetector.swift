@@ -62,6 +62,13 @@ final class AppContextDetector {
         _bundleID = getFocusedAppBundleID() ?? getFrontmostAppBundleID() ?? ""
     }
 
+    /// Fresh lookup of the focused app's bundleID.
+    func refreshBundleID() {
+        if let fresh = getFocusedAppBundleID() ?? getFrontmostAppBundleID() {
+            _bundleID = fresh
+        }
+    }
+
     /// Primary: AXUIElement focused application.
     private func getFocusedAppBundleID() -> String? {
         let systemWide = AXUIElementCreateSystemWide()
