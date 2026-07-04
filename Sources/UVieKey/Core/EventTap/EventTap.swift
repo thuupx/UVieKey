@@ -262,8 +262,10 @@ final class EventTap: ObservableObject {
             guard let self = self else { return }
             // Reset engine to clear ghost characters from previous app
             self._engine.reset()
-            // Reset auto-capitalize state for new app context
-            self.isAtSentenceStart = true
+            // Do NOT reset isAtSentenceStart here — it should only be set
+            // by sentence delimiters (. ! ?), Enter key, or app launch.
+            // Resetting on every app switch causes wrong capitalization
+            // when switching back to an app mid-sentence.
         }
     }
 
