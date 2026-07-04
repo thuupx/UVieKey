@@ -27,6 +27,10 @@ jobs:
       - name: Fetch uvie-rs library
         run: ./scripts/fetch-uvie.sh
 
+      # ── 2b. Fetch Sparkle framework (for in-app updates) ──────────────────
+      - name: Fetch Sparkle framework
+        run: ./scripts/fetch-sparkle.sh
+
       # ── 3. Generate version info ──────────────────────────────────────────
       - name: Generate Version.swift
         run: |
@@ -95,10 +99,14 @@ jobs:
           CONTENTS="$APP/Contents"
           mkdir -p "$CONTENTS/MacOS"
           mkdir -p "$CONTENTS/Resources"
+          mkdir -p "$CONTENTS/Frameworks"
 
           cp Info.plist "$CONTENTS/Info.plist"
           cp .build/release/UVieKey "$CONTENTS/MacOS/UVieKey"
           chmod +x "$CONTENTS/MacOS/UVieKey"
+
+          # Embed Sparkle.framework for in-app updates
+          cp -R Frameworks/Sparkle.framework "$CONTENTS/Frameworks/Sparkle.framework"
 
           # Copy app icon
           if [ -f "AppIcon.icns" ]; then
@@ -146,7 +154,7 @@ jobs:
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
           DMG_NAME="UVieKey-${VERSION}-universal.dmg"
-          # Use a venv because the runner’s Python is externally-managed (PEP 668).
+          # Use a venv because the runner's Python is externally-managed (PEP 668).
           python3 -m venv .venv
           .venv/bin/pip install dmgbuild
           .venv/bin/dmgbuild \
@@ -157,13 +165,73 @@ jobs:
 
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
 
+      # ── 9b. Create Sparkle update zip + EdDSA signature ──────────────────
+      - name: Create Sparkle update zip
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
+          ZIP_NAME="UVieKey-${VERSION}-universal.zip"
+
+          # Create zip for Sparkle (must be a flat zip of the .app)
+          ditto -c -k --keepParent UVieKey.app "$ZIP_NAME"
+          ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
+
+          # Sign with EdDSA using Sparkle's sign_update tool
+          # The private key is passed via stdin from a GitHub secret
+          SPARKLE_BIN="Frameworks/sparkle-bin/sign_update"
+          if [ -f "$SPARKLE_BIN" ] && [ -n "$SPARKLE_EDDSA_PRIVATE_KEY" ]; then
+            ED_SIG=$(echo "$SPARKLE_EDDSA_PRIVATE_KEY" | "$SPARKLE_BIN" --ed-key-file - "$ZIP_NAME" 2>/dev/null | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          fi
+
+          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
+          echo "ZIP_SIZE=$ZIP_SIZE" >> "$GITHUB_ENV"
+          echo "ED_SIG=${ED_SIG:-}" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # ── 9c. Generate appcast.xml entry ───────────────────────────────────
+      - name: Generate appcast.xml
+        run: |
+          VERSION="${APP_VERSION}"
+          ZIP_NAME="${ZIP_NAME}"
+          ZIP_SIZE="${ZIP_SIZE}"
+          ED_SIG="${ED_SIG}"
+          TAG="${GITHUB_REF_NAME:-v${VERSION}}"
+          PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
+          ZIP_URL="https://github.com/thuupx/UVieKey/releases/download/${TAG}/${ZIP_NAME}"
+
+          # Generate appcast.xml for this release
+          cat > appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <channel>
+                  <title>UVieKey Changelog</title>
+                  <description>Most recent changes with links to updates.</description>
+                  <language>vi</language>
+                  <item>
+                      <title>Version ${VERSION}</title>
+                      <sparkle:version>1</sparkle:version>
+                      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                      <pubDate>${PUB_DATE}</pubDate>
+                      <enclosure url="${ZIP_URL}" length="${ZIP_SIZE}" type="application/octet-stream" sparkle:edSignature="${ED_SIG}" />
+                      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+                  </item>
+              </channel>
+          </rss>
+          EOF
+
+          echo "APPCAST_NAME=appcast.xml" >> "$GITHUB_ENV"
+
       # ── 10. Draft Release ────────────────────────────────────────────────
       - name: Create Draft Release
         uses: softprops/action-gh-release@v2
         with:
           draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || true }}
           generate_release_notes: true
-          files: ${{ env.DMG_NAME }}
+          files: |
+            ${{ env.DMG_NAME }}
+            ${{ env.ZIP_NAME }}
+            ${{ env.APPCAST_NAME }}
           body: |
             ## UVieKey ${{ github.ref_name }}
 
@@ -173,3 +241,4 @@ jobs:
             3. Launch UVieKey from Applications
 
             > This build embeds the [uvie-rs](https://github.com/thuupx/uvie-rs) engine as a prebuilt static library.
+            > In-app updates are powered by [Sparkle](https://sparkle-project.org).

@@ -1,4 +1,5 @@
 import SwiftUI
+import Sparkle
 
 @main
 struct UVieKeyApp: App {
@@ -58,8 +59,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var eventTap = EventTap(inputMethodManager: inputMethodManager)
     private let updateChecker = UpdateChecker.shared
     private let hotkeyManager = GlobalHotkeyManager.shared
+    private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Sparkle requires a proper .app bundle with Info.plist
+        // (CFBundleIdentifier, CFBundleVersion, SUFeedURL). Skip in dev
+        // builds where the binary runs from .build/.../debug/ directly.
+        if Bundle.main.bundleIdentifier != nil,
+           Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") != nil,
+           Bundle.main.url(forResource: "SUFeedURL", withExtension: nil) != nil || Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
+            updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+            UpdateManager.shared.register(updaterController!)
+        }
+
         // Register factory defaults - only applied if key has never been set
         UserDefaults.standard.register(defaults: [
             DefaultsKey.engineEnabled:      true,

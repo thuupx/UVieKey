@@ -26,5 +26,15 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 UVieKey</string>
+	<key>SUPublicEDKey</key>
+	<string>lsxNkHdBOuoBFwhmz6FQ5T7mWi2A3p2Stg/o3KUev+4=</string>
+	<key>SUFeedURL</key>
+	<string>http://localhost:8888/appcast.xml</string>
+	<key>SUEnableAutomaticAUpdates</key>
+	<true/>
+	<key>SUShowReleaseNotes</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
 </dict>
 </plist>

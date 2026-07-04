@@ -46,13 +46,18 @@ struct AboutPane: View {
 
                 // Update status block
                 VStack(spacing: 10) {
-                    // Manual update download button (when an update is available)
-                    if updateChecker.hasUpdate, let url = updateChecker.latestReleaseURL {
-                        Link(destination: url) {
+                    // In-app update button (Sparkle). When an update is
+                    // available, Sparkle shows its own update window with
+                    // release notes, download progress, and install button.
+                    // The manual download link below serves as fallback.
+                    if updateChecker.hasUpdate {
+                        Button {
+                            UpdateManager.shared.checkForUpdates()
+                        } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .font(.system(size: 13, weight: .semibold))
-                                Text("Tải bản cập nhật v\(updateChecker.latestVersion ?? "")")
+                                Text("Cập nhật v\(updateChecker.latestVersion ?? "")")
                                     .font(.system(size: 13, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity)
@@ -62,15 +67,25 @@ struct AboutPane: View {
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: 260)
+
+                        // Fallback: manual download link if Sparkle fails
+                        if let url = updateChecker.latestReleaseURL {
+                            Link(destination: url) {
+                                Text("Tải thủ công")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     } else if let last = updateChecker.lastChecked {
                         Text("Đã kiểm tra: \(last.formatted(date: .abbreviated, time: .shortened))")
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
                     }
 
-                    // Manual "check now" button
+                    // Manual "check now" button — triggers Sparkle's check
                     Button {
-                        updateChecker.checkNow()
+                        UpdateManager.shared.checkForUpdates()
                     } label: {
                         HStack(spacing: 6) {
                             if updateChecker.isChecking {
