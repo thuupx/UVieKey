@@ -32,22 +32,17 @@ final class Logger {
     }
 
     private init() {
-        let logsDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("Logs/UVieKey", isDirectory: true)
+        guard let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+            // Fallback to tmp if the user library directory is unavailable.
+            logURL = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "uviekey.log")
+            return
+        }
+        let logsDir = libraryDir.appending(path: "Logs/UVieKey")
         try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
-        logURL = logsDir.appendingPathComponent("uviekey.log")
+        logURL = logsDir.appending(path: "uviekey.log")
 
-        // `FileHandle(forWritingTo:)` fails if the file doesn't exist, so
-        // create it explicitly first.
-        if !FileManager.default.fileExists(atPath: logURL.path) {
-            FileManager.default.createFile(atPath: logURL.path, contents: nil)
-        }
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: logURL.path),
-           let size = attrs[.size] as? Int {
-            currentSize = size
-        }
-        fileHandle = try? FileHandle(forWritingTo: logURL)
-        _ = try? fileHandle?.seekToEnd()
+        // File handle is opened lazily on the first write (see `writeLine`),
+        // so when diagnostics are off we never create `uviekey.log` on disk.
     }
 
     deinit {
@@ -64,19 +59,24 @@ final class Logger {
     /// Log a keystroke trace line. Only writes if `keystrokeTraceEnabled` is true.
     /// Kept on a dedicated queue so the event-tap thread never blocks on disk I/O.
     func keystroke(_ message: String) {
-        guard keystrokeTraceEnabled else { return }
-        log(message, level: "TRACE")
+        // Read the toggle once and pass it down so `log()` doesn't re-read
+        // UserDefaults on every keystroke (hot path).
+        let traceEnabled = keystrokeTraceEnabled
+        guard traceEnabled else { return }
+        log(message, level: "TRACE", fileLoggingForced: true)
     }
 
     // MARK: - Collection
 
-    /// Collects the last 24h of logs + perf log + system profile into a single
-    /// string suitable for sharing via `NSSharingServicePicker`.
+    /// Collects the current log + perf log + system profile into a single
+    /// string. The caller writes it to a temp `.txt` and reveals it in Finder
+    /// (see `writeDiagnosticsToTempFile`) — `NSSharingServicePicker` was
+    /// dropped after the macOS 26 over-release crash.
     func collectDiagnostics() -> String {
         var parts: [String] = []
 
         parts.append("=== UVieKey Diagnostics ===")
-        parts.append("Generated: \(ISO8601DateFormatter().string(from: Date()))")
+        parts.append("Generated: \(ISO8601DateFormatter().string(from: Date.now))")
         parts.append("App version: \(AppVersion.fullVersion)")
         parts.append("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         parts.append("Input method: \(UserDefaults.standard.string(forKey: DefaultsKey.inputMethod) ?? "telex")")
@@ -115,7 +115,7 @@ final class Logger {
     func writeDiagnosticsToTempFile() -> URL? {
         let content = collectDiagnostics()
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("UVieKey-diagnostics-\(Int(Date().timeIntervalSince1970)).txt")
+            .appendingPathComponent("UVieKey-diagnostics-\(Int(Date.now.timeIntervalSince1970)).txt")
         do {
             try content.write(to: url, atomically: true, encoding: .utf8)
             return url
@@ -127,17 +127,26 @@ final class Logger {
 
     // MARK: - Internal
 
-    private func log(_ message: String, level: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let line = "\(timestamp) [\(level)] \(message)\n"
-
-        // Mirror to os.Logger so Console.app picks it up too.
+    private func log(_ message: String, level: String, fileLoggingForced: Bool = false) {
+        // Mirror to os.Logger so Console.app picks it up too. This is always
+        // on — Console.app is opt-in on the user side, so it never produces
+        // surprise files on disk.
         switch level {
         case "ERROR": osLogger.error("\(message, privacy: .public)")
         case "WARN":  osLogger.warning("\(message, privacy: .public)")
         case "INFO":  osLogger.info("\(message, privacy: .public)")
         default:      osLogger.debug("\(message, privacy: .public)")
         }
+
+        // File logging is gated behind the "Bật chẩn đoán" toggle
+        // (Settings → Năng cao). When diagnostics are off, no `uviekey.log`
+        // file is written — avoiding unbounded disk writes during normal use.
+        // `fileLoggingForced` lets callers that already checked the toggle
+        // skip the second UserDefaults read.
+        guard fileLoggingForced || keystrokeTraceEnabled else { return }
+
+        let timestamp = ISO8601DateFormatter().string(from: Date.now)
+        let line = "\(timestamp) [\(level)] \(message)\n"
 
         logQueue.async { [weak self] in
             self?.writeLine(line)
@@ -146,6 +155,18 @@ final class Logger {
 
     private func writeLine(_ line: String) {
         guard let data = line.data(using: .utf8) else { return }
+        // Open the file handle lazily on the first write. This keeps
+        // `uviekey.log` off disk entirely when diagnostics are off.
+        if fileHandle == nil {
+            if !FileManager.default.fileExists(atPath: logURL.path) {
+                FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: logURL.path),
+                      let size = attrs[.size] as? Int {
+                currentSize = size
+            }
+            fileHandle = try? FileHandle(forWritingTo: logURL)
+            _ = try? fileHandle?.seekToEnd()
+        }
         currentSize += data.count
         if currentSize > maxFileSize {
             rotate()
