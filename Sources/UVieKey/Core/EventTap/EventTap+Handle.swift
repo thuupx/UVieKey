@@ -6,6 +6,19 @@ extension EventTap {
     /// Main event-tap callback. Dispatches to specialized handlers based on
     /// event type and key code.
     func handle(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // Re-enable the tap if the system disabled it (callback timeout,
+        // user input, system sleep). Without this, all keyboard input stops.
+        // kCGEventTapDisabledByTimeout = 0xFFFFFFFE,
+        // kCGEventTapDisabledByUserInput = 0xFFFFFFFF
+        let rawType = type.rawValue
+        if rawType == 0xFFFFFFFE || rawType == 0xFFFFFFFF {
+            if let tap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+                Logger.shared.warn("EventTap: tap was disabled (rawType=\(rawType)), re-enabled")
+            }
+            return Unmanaged.passRetained(event)
+        }
+
         // Skip our own synthetic events
         if event.getIntegerValueField(.eventSourceStateID) == syntheticTag {
             return Unmanaged.passRetained(event)
@@ -16,12 +29,18 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
 
-        // User-excluded apps: pass all events through untouched.
-        // Reset the engine so stale composing state doesn't leak when the user
-        // switches back to a normal app.
+        // Safety net: the CGEventTap is disabled entirely when the user is
+        // in an excluded app (see `updateExcludedTapState` in EventTap.swift).
+        // If a keystroke arrives before the tap was disabled (very fast app
+        // switch), pass it through untouched.
         if isExcludedApp {
-            _engine.reset()
+            if !lastExcludedState {
+                _engine.reset()
+                lastExcludedState = true
+            }
             return Unmanaged.passRetained(event)
+        } else if lastExcludedState {
+            lastExcludedState = false
         }
 
         // Global hotkey: Fn tap toggles Vietnamese / English
@@ -52,15 +71,6 @@ extension EventTap {
         let flags = event.flags
         let app = appDetector.bundleID
         perfBegin()
-
-        // DEBUG: Trace ghost character issue
-        if type == .keyDown {
-            let composing = _engine.currentOutput()
-            let committed = _engine.committedText()
-            if !composing.isEmpty || !committed.isEmpty {
-                Logger.shared.keystroke("keydown keyCode=\(keyCode) composing='\(composing)' committed='\(committed)' app=\(app)")
-            }
-        }
 
         // Detect text-selection shortcuts. The diff engine tracks text at the
         // insertion point only; when the user selects text and types over it,
@@ -155,20 +165,10 @@ extension EventTap {
         }
 
         let (bs, out) = _engine.backspace()
-        #if DEBUG
-        let composingBs = _engine.currentOutput()
-        let committedBs = _engine.committedText()
-        let rawBs = _engine.rawChars()
-        print("[UVieKey] BACKSPACE keyCode=\(keyCode) bs=\(bs) out='\(out)' composing='\(composingBs)' committed='\(committedBs)' raw='\(rawBs)' isComposing=\(_engine.isComposing) compound=\(isCompoundApp) chromium=\(isChromium)")
-        #endif
         if bs == 0 && out.isEmpty && !_engine.isComposing {
             // Not composing - let OS handle it
             perfEnd("backspace-os", keyCode: keyCode, app: app)
             return Unmanaged.passRetained(event)
-        }
-        // Debug: log if engine is composing but backspace returned empty (shouldn't happen)
-        if bs == 0 && out.isEmpty && _engine.isComposing {
-            print("⚠️ EventTap: Engine isComposing but backspace returned empty")
         }
 
         // CGEvent path: selection-based for compound apps (no flicker),
@@ -288,12 +288,6 @@ extension EventTap {
 
         let (bs, out) = _engine.feed(char: transformedChar)
         Logger.shared.keystroke("feed char='\(transformedChar)' keyCode=\(keyCode) bs=\(bs) out='\(out)' compound=\(isCompoundApp) chromium=\(isChromium)")
-        #if DEBUG
-        let composingFeed = _engine.currentOutput()
-        let committedFeed = _engine.committedText()
-        let rawFeed = _engine.rawChars()
-        print("[UVieKey] FEED char='\(transformedChar)' keyCode=\(keyCode) bs=\(bs) out='\(out)' composing='\(composingFeed)' committed='\(committedFeed)' raw='\(rawFeed)' compound=\(isCompoundApp) chromium=\(isChromium)")
-        #endif
 
         // Update sentence start state based on what was typed
         updateSentenceStartState(after: firstChar)

@@ -50,6 +50,7 @@ final class EventTap: ObservableObject {
 
     /// App switch detection: prevent ghost characters from previous app
     var engineResetObserver: NSObjectProtocol?
+    var appSwitchObserver: NSObjectProtocol?
 
     /// Performance logging for keystroke latency (only logs slow / high-event paths).
     /// Backed by `Logger.shared` so concurrent writes are serialized on a
@@ -58,13 +59,27 @@ final class EventTap: ObservableObject {
     var perfEventCount = 0
     var perfStartTime: CFAbsoluteTime = 0
 
+    /// Cached app classification sets. Reading from UserDefaults on every
+    /// event tap callback is expensive (disk-backed store + Set allocation)
+    /// and can cause the callback to exceed the system's timeout, leading
+    /// to the tap being disabled — which blocks all keyboard input including
+    /// copy/paste. Cache the sets and reload only on settings change.
+    private var cachedExcludedApps: Set<String> = []
+    private var cachedCompoundApps: Set<String> = []
+    private var cachedChromiumApps: Set<String> = []
+    /// Tracks whether the CGEventTap is currently disabled for an excluded app.
+    /// Prevents redundant `CGEvent.tapEnable` calls on every app switch.
+    var lastExcludedState = false
+
     init(inputMethodManager: InputMethodManager) {
         self.inputMethodManager = inputMethodManager
         self.axInjector = AXTextInjector(engine: _engine)
         eventSource = CGEventSource(stateID: .privateState)
         applyEngineSettings()
+        reloadAppCaches()
         observeSettingsChanges()
         observeEngineResetNotification()
+        observeAppSwitch()
     }
 
     deinit {
@@ -75,6 +90,9 @@ final class EventTap: ObservableObject {
         }
         if let engineResetObserver {
             NotificationCenter.default.removeObserver(engineResetObserver)
+        }
+        if let appSwitchObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(appSwitchObserver)
         }
     }
 
@@ -88,7 +106,6 @@ final class EventTap: ObservableObject {
 
         guard AccessibilityChecker.isTrusted else {
             Logger.shared.warn("EventTap.start: Accessibility not granted, scheduling retry")
-            print("EventTap: Accessibility not granted")
             scheduleStartRetry(attempt: 0)
             return
         }
@@ -127,7 +144,6 @@ final class EventTap: ObservableObject {
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             Logger.shared.error("EventTap.startTap: CGEvent.tapCreate returned nil — accessibility grant may not be active yet, scheduling retry")
-            print("EventTap: Failed to create tap")
             scheduleStartRetry(attempt: 0)
             return
         }
@@ -239,6 +255,18 @@ final class EventTap: ObservableObject {
         _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
         _engine.setQuickTelex(defaults.bool(forKey: DefaultsKey.quickTelex))
         _engine.setQuickStart(defaults.bool(forKey: DefaultsKey.quickStart))
+        // Reload app classification caches too — user may have added/removed
+        // excluded or compound apps in Settings.
+        reloadAppCaches()
+    }
+
+    /// Reload cached app classification sets from UserDefaults. Called on
+    /// init and whenever settings change. Avoids per-event UserDefaults
+    /// reads that can cause event tap timeouts.
+    private func reloadAppCaches() {
+        cachedExcludedApps = getExcludedApps()
+        cachedCompoundApps = getCompoundApps()
+        cachedChromiumApps = getChromiumBrowsers()
     }
 
     /// Observe runtime setting changes so toggling Quick Telex, Modern
@@ -250,6 +278,25 @@ final class EventTap: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             self?.applyEngineSettings()
+        }
+    }
+
+    /// Observe app switches directly (NSWorkspace notification) to update
+    /// the excluded tap state before any events arrive. This is separate
+    /// from `observeEngineResetNotification` because the Combine sink order
+    /// between AppContextDetector and InputMethodManager is not guaranteed
+    /// — appDetector.bundleID could be stale when the reset notification fires.
+    private func observeAppSwitch() {
+        appSwitchObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                          as? NSRunningApplication else { return }
+            self.appDetector.updateBundleID(app)
+            self.updateExcludedTapState()
         }
     }
 
@@ -266,6 +313,23 @@ final class EventTap: ObservableObject {
             // by sentence delimiters (. ! ?), Enter key, or app launch.
             // Resetting on every app switch causes wrong capitalization
             // when switching back to an app mid-sentence.
+            self.updateExcludedTapState()
+        }
+    }
+
+    /// Toggle the CGEventTap on/off based on whether the current frontmost
+    /// app is in the excluded list. When excluded, the tap is disabled
+    /// entirely so events flow through natively (no interception overhead,
+    /// no timeout risk). Re-enables when switching back to a normal app.
+    private func updateExcludedTapState() {
+        let bundleID = appDetector.bundleID
+        let excluded = cachedExcludedApps.contains(bundleID)
+        if excluded != lastExcludedState {
+            lastExcludedState = excluded
+            if let tap {
+                CGEvent.tapEnable(tap: tap, enable: !excluded)
+                Logger.shared.info("EventTap: \(excluded ? "disabled" : "enabled") for app \(bundleID)")
+            }
         }
     }
 
@@ -287,15 +351,15 @@ final class EventTap: ObservableObject {
     }
 
     var isCompoundApp: Bool {
-        checkIsCompoundApp(appDetector.bundleID)
+        cachedCompoundApps.contains(appDetector.bundleID)
     }
 
     var isChromium: Bool {
-        checkIsChromiumBrowser(appDetector.bundleID)
+        cachedChromiumApps.contains(appDetector.bundleID)
     }
 
     var isExcludedApp: Bool {
-        checkIsExcludedApp(appDetector.bundleID)
+        cachedExcludedApps.contains(appDetector.bundleID)
     }
 
     var isAXApp: Bool {
