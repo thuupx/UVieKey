@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>UVieKey Changelog</title>
+        <description>Most recent changes with links to updates.</description>
+        <language>vi</language>
+        <!--
+            This appcast is updated automatically by the CI release workflow.
+            Each release adds a new <item> with the EdDSA signature generated
+            by `sign_update` (from Sparkle's bin/).
+            The enclosure URL points to the zip asset uploaded to GitHub
+            Releases. Sparkle downloads, verifies the signature, extracts,
+            replaces UVieKey.app, and relaunches.
+        -->
+    </channel>
+</rss>

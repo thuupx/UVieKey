@@ -35,6 +35,15 @@ final class AppContextDetector {
             .store(in: &cancellables)
     }
 
+    /// Update bundleID directly from an NSRunningApplication. Used by
+    /// EventTap to ensure bundleID is current before checking excluded state
+    /// (Bug #12: Combine sink order between AppContextDetector and
+    /// InputMethodManager is not guaranteed, so appDetector.bundleID could
+    /// be stale when resetEngineAfterAppSwitch fires).
+    func updateBundleID(_ app: NSRunningApplication) {
+        _bundleID = app.bundleIdentifier ?? ""
+    }
+
     func stop() {
         cancellables.removeAll()
     }

@@ -11,13 +11,20 @@ let package = Package(
         .executableTarget(
             name: "UVieKey",
             dependencies: [],
+            swiftSettings: [
+                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
+            ],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("ServiceManagement"),
+                .linkedFramework("Sparkle"),
                 .linkedLibrary("uvie"),
+                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
                 .unsafeFlags(["-LFrameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../Frameworks"], .when(platforms: [.macOS])),
             ]
         )
     ]

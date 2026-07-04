@@ -7,5 +7,7 @@ xcuserdata/
 Sources/UVieKey/Generated/
 Frameworks/*.a
 Frameworks/*.h
+Frameworks/Sparkle.framework/
+Frameworks/sparkle-bin/
 !Frameworks/.gitkeep
 UVieKey.app/

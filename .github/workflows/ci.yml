@@ -19,6 +19,9 @@ jobs:
       - name: Fetch uvie-rs library
         run: ./scripts/fetch-uvie.sh
 
+      - name: Fetch Sparkle framework
+        run: ./scripts/fetch-sparkle.sh
+
       - name: Generate version info
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
