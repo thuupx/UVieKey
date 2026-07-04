@@ -22,6 +22,8 @@ jobs:
       # ── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for gh-pages orphan push
 
       # ── 2. Fetch prebuilt uvie-rs library ───────────────────────────────────
       - name: Fetch uvie-rs library
@@ -200,26 +202,45 @@ jobs:
           PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
           ZIP_URL="https://github.com/thuupx/UVieKey/releases/download/${TAG}/${ZIP_NAME}"
 
-          # Generate appcast.xml for this release
-          cat > appcast.xml <<EOF
+          # Use docs/appcast.xml as the base template (contains channel
+          # header + comment). Append the new <item> before </channel>.
+          APPCAST="docs/appcast.xml"
+          if [ ! -f "$APPCAST" ]; then
+            cat > "$APPCAST" <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
               <channel>
                   <title>UVieKey Changelog</title>
                   <description>Most recent changes with links to updates.</description>
                   <language>vi</language>
-                  <item>
-                      <title>Version ${VERSION}</title>
-                      <sparkle:version>1</sparkle:version>
-                      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-                      <pubDate>${PUB_DATE}</pubDate>
-                      <enclosure url="${ZIP_URL}" length="${ZIP_SIZE}" type="application/octet-stream" sparkle:edSignature="${ED_SIG}" />
-                      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-                  </item>
               </channel>
           </rss>
           EOF
+          fi
 
+          # Build the new <item> block (indented to match template style)
+          ITEM='              <item>
+                  <title>Version '"${VERSION}"'</title>
+                  <sparkle:version>1</sparkle:version>
+                  <sparkle:shortVersionString>'"${VERSION}"'</sparkle:shortVersionString>
+                  <pubDate>'"${PUB_DATE}"'</pubDate>
+                  <enclosure url="'"${ZIP_URL}"'" length="'"${ZIP_SIZE}"'" type="application/octet-stream" sparkle:edSignature="'"${ED_SIG}"'" />
+                  <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+              </item>'
+
+          # Insert the item before </channel>
+          TMPFILE=$(mktemp)
+          awk -v item="$ITEM" '
+            /<\/channel>/ { print item; }
+            { print }
+          ' "$APPCAST" > "$TMPFILE"
+          mv "$TMPFILE" "$APPCAST"
+
+          echo "Generated appcast.xml:"
+          cat "$APPCAST"
+
+          # Also copy to root for release asset upload (asset name = appcast.xml)
+          cp "$APPCAST" appcast.xml
           echo "APPCAST_NAME=appcast.xml" >> "$GITHUB_ENV"
 
       # ── 10. Draft Release ────────────────────────────────────────────────
@@ -242,3 +263,22 @@ jobs:
 
             > This build embeds the [uvie-rs](https://github.com/thuupx/uvie-rs) engine as a prebuilt static library.
             > In-app updates are powered by [Sparkle](https://sparkle-project.org).
+
+      # ── 11. Publish appcast.xml to gh-pages (orphan branch) ─────────────
+      # Force-push a single-file orphan branch so GitHub Pages serves the
+      # latest appcast.xml without polluting main's commit history.
+      - name: Publish appcast.xml to gh-pages
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Copy appcast.xml to a temp location before wiping the tree
+          cp appcast.xml /tmp/appcast.xml
+
+          # Create orphan branch gh-pages with only appcast.xml
+          git checkout --orphan gh-pages
+          git rm -rf . 2>/dev/null || true
+          cp /tmp/appcast.xml appcast.xml
+          git add appcast.xml
+          git commit -m "appcast.xml for ${APP_VERSION}"
+          git push origin gh-pages --force
