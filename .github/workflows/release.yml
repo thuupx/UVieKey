@@ -219,22 +219,19 @@ jobs:
           fi
 
           # Build the new <item> block (indented to match template style)
-          ITEM='              <item>
-                  <title>Version '"${VERSION}"'</title>
+          ITEM=$(cat <<EOF
+              <item>
+                  <title>Version ${VERSION}</title>
                   <sparkle:version>1</sparkle:version>
-                  <sparkle:shortVersionString>'"${VERSION}"'</sparkle:shortVersionString>
-                  <pubDate>'"${PUB_DATE}"'</pubDate>
-                  <enclosure url="'"${ZIP_URL}"'" length="'"${ZIP_SIZE}"'" type="application/octet-stream" sparkle:edSignature="'"${ED_SIG}"'" />
+                  <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                  <pubDate>${PUB_DATE}</pubDate>
+                  <enclosure url="${ZIP_URL}" length="${ZIP_SIZE}" type="application/octet-stream" sparkle:edSignature="${ED_SIG}" />
                   <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-              </item>'
+              </item>
+          EOF
+          )
 
-          # Insert the item before </channel>
-          TMPFILE=$(mktemp)
-          awk -v item="$ITEM" '
-            /<\/channel>/ { print item; }
-            { print }
-          ' "$APPCAST" > "$TMPFILE"
-          mv "$TMPFILE" "$APPCAST"
+          python3 -c "import sys; appcast=sys.argv[1]; item=sys.argv[2]; content=open(appcast).read(); content=content.replace('</channel>', item+'\n    </channel>'); open(appcast,'w').write(content)" "$APPCAST" "$ITEM"
 
           echo "Generated appcast.xml:"
           cat "$APPCAST"
