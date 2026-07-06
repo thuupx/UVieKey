@@ -15,7 +15,13 @@ extension EventTap {
         if rawType == 0xFFFFFFFE || rawType == 0xFFFFFFFF {
             if let tap, !lastExcludedState {
                 CGEvent.tapEnable(tap: tap, enable: true)
-                Logger.shared.warn("EventTap: tap was disabled (rawType=\(rawType)), re-enabled")
+                // Reset Fn tracking state — the tap was disabled (timeout or
+                // user input), so any Fn release events were missed. Stale
+                // fnIsDown could cause the next non-Fn flagsChanged (Cmd,
+                // Shift, Option) to be misidentified as an Fn release.
+                fnIsDown = false
+                fnWasTap = false
+                Logger.shared.warn("EventTap: tap was disabled (rawType=\(rawType)), re-enabled, Fn state reset")
             }
             return Unmanaged.passRetained(event)
         }

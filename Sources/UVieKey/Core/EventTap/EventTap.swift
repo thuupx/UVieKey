@@ -32,8 +32,13 @@ final class EventTap: ObservableObject {
     /// Fn-key hotkey state (event-tap callback thread only).
     var fnIsDown = false
     var fnWasTap = false
-    var fnHandledByKeyEvent = false
     var lastToggleTime: Date?
+
+    /// Cached `inputMethodHotkeyEnabled` flag. Avoids a UserDefaults disk read
+    /// on every event-tap callback (including flagsChanged for Cmd/Shift/Option),
+    /// which on macOS 15 can be slow enough to trigger a tap timeout. Refreshed
+    /// in `applyEngineSettings()` when settings change.
+    var fnHotkeyEnabled = false
 
     /// Retry state for `start()` (Bug #1, #6, #10). After a fresh login or
     /// onboarding, `AXIsProcessTrustedWithOptions` can return true from a
@@ -255,6 +260,9 @@ final class EventTap: ObservableObject {
         _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
         _engine.setQuickTelex(defaults.bool(forKey: DefaultsKey.quickTelex))
         _engine.setQuickStart(defaults.bool(forKey: DefaultsKey.quickStart))
+        // Cache the Fn hotkey flag so handleHotkey() doesn't read UserDefaults
+        // on every event-tap callback (flagsChanged for any modifier key).
+        fnHotkeyEnabled = defaults.bool(forKey: DefaultsKey.inputMethodHotkeyEnabled)
         // Reload app classification caches too — user may have added/removed
         // excluded or compound apps in Settings.
         reloadAppCaches()
@@ -296,6 +304,10 @@ final class EventTap: ObservableObject {
                   let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                           as? NSRunningApplication else { return }
             self.appDetector.updateBundleID(app)
+            // Reset Fn tracking on app switch — if the user released Fn while
+            // the tap was disabled (excluded app), fnIsDown would be stale.
+            self.fnIsDown = false
+            self.fnWasTap = false
             self.updateExcludedTapState()
         }
     }
@@ -309,6 +321,10 @@ final class EventTap: ObservableObject {
             guard let self = self else { return }
             // Reset engine to clear ghost characters from previous app
             self._engine.reset()
+            // Reset Fn tracking — Fn may have been released while the tap was
+            // disabled for an excluded app, leaving fnIsDown stale.
+            self.fnIsDown = false
+            self.fnWasTap = false
             // Do NOT reset isAtSentenceStart here — it should only be set
             // by sentence delimiters (. ! ?), Enter key, or app launch.
             // Resetting on every app switch causes wrong capitalization
