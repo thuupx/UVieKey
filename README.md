@@ -1,3 +1,5 @@
+<a href="https://unikorn.vn/p/uviekey?ref=embed-uviekey" target="_blank"><img src="https://unikorn.vn/api/widgets/badge/uviekey/rank?theme=light&type=monthly" alt="UVieKey - Monthly" style="width: 250px; height: 64px;" width="250" height="64" /></a>
+
 # UVieKey
 
 Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engine `uvie-rs`.
