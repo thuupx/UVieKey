@@ -22,7 +22,7 @@ final class InputMethodManager: ObservableObject {
     var inputMethod: InputMethod {
         get {
             let raw = UserDefaults.standard.string(forKey: DefaultsKey.inputMethod) ?? "telex"
-            return raw == "vni" ? .vni : .telex
+            return InputMethod(rawValue: raw) ?? .telex
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: DefaultsKey.inputMethod)

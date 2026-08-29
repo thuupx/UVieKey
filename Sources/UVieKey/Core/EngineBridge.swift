@@ -71,7 +71,12 @@ final class EngineBridge {
 
     func setInputMethod(_ method: InputMethod) {
         guard let engine else { return }
-        uvie_engine_set_input_method(engine, method == .vni ? 1 : 0)
+        let code: Int32 = switch method {
+        case .telex: 0
+        case .vni: 1
+        case .simpleTelex: 2
+        }
+        uvie_engine_set_input_method(engine, code)
     }
 
     func setModernOrthography(_ enabled: Bool) {
@@ -153,11 +158,13 @@ final class EngineBridge {
 enum InputMethod: String, CaseIterable, Identifiable {
     case telex
     case vni
+    case simpleTelex
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .telex: return "Telex"
         case .vni: return "VNI"
+        case .simpleTelex: return "Simple Telex"
         }
     }
 }

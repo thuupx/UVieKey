@@ -59,6 +59,7 @@ struct GeneralPane: View {
                     HStack(spacing: 1) {
                         imOption("Telex", "telex")
                         imOption("VNI",   "vni")
+                        imOption("Simple Telex", "simpleTelex")
                     }
                     .padding(12)
                 }

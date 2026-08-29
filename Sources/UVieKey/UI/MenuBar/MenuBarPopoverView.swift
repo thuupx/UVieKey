@@ -114,6 +114,7 @@ struct MenuBarPopoverView: View {
             HStack(spacing: 1) {
                 imPill("Telex", "telex")
                 imPill("VNI",   "vni")
+                imPill("Simple", "simpleTelex")
             }
             .padding(2)
             .background(.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
@@ -127,7 +128,7 @@ struct MenuBarPopoverView: View {
         return Button { inputMethod = tag } label: {
             Text(label)
                 .font(.system(size: 11, weight: active ? .semibold : .regular))
-                .frame(width: 50, height: 22)
+                .frame(width: 46, height: 22)
                 .background(active ? Color.accentColor : .clear,
                              in: RoundedRectangle(cornerRadius: 5))
                 .foregroundStyle(active ? .white : .primary)

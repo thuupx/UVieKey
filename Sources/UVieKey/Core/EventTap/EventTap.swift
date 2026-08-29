@@ -258,7 +258,7 @@ final class EventTap: ObservableObject {
     func applyEngineSettings() {
         let defaults = UserDefaults.standard
         let method = defaults.string(forKey: DefaultsKey.inputMethod) ?? "telex"
-        let newMethod: InputMethod = method == "vni" ? .vni : .telex
+        let newMethod = InputMethod(rawValue: method) ?? .telex
         // Reset the engine when the input method changes — stale composing
         // state from the old method (e.g. Telex tone keys 's','f','r') would
         // be misinterpreted in the new method (VNI digits '1','2','3'),
