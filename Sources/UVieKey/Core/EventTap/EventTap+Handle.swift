@@ -62,15 +62,26 @@ extension EventTap {
 
         // Mouse down/drag starts a new editing session (selection, click, etc.).
         // Reset the engine so stale composing state cannot be applied after the
-        // user selects text with the mouse.
+        // user selects text with the mouse. Also reset auto-capitalize state —
+        // clicking into a new text field means we don't know if we're at a
+        // sentence start, so default to true (safe for new text fields).
         if type == .leftMouseDown || type == .rightMouseDown ||
            type == .leftMouseDragged || type == .rightMouseDragged {
             _engine.reset()
+            isAtSentenceStart = true
             return Unmanaged.passRetained(event)
         }
 
         // Only handle keyDown/keyUp
         guard type == .keyDown || type == .keyUp else {
+            return Unmanaged.passRetained(event)
+        }
+
+        // If the CGEventSource is nil (rare, but possible if construction
+        // failed), we cannot post synthetic events. Pass everything through
+        // to avoid consuming keystrokes that can't be replaced — a lost
+        // keystroke is worse than no Vietnamese processing.
+        guard eventSource != nil else {
             return Unmanaged.passRetained(event)
         }
 
@@ -134,14 +145,22 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
 
-        // In English mode, pass everything through
+        // In English mode, re-post character keys as synthetic events to
+        // suppress the OS autocomplete/autocorrect popup. Real hardware
+        // keyDown events trigger the popup; synthetic events from a
+        // privateState CGEventSource do not.
         guard inputMethodManager.isVietnamese else {
-            return Unmanaged.passRetained(event)
+            return handleEnglishMode(type: type, keyCode: keyCode, event: event)
         }
 
         // Auto-disable on non-Latin keyboard layout
         if UserDefaults.standard.bool(forKey: DefaultsKey.autoDisableOnNonLatinLayout),
            layoutMonitor.isNonLatinLayout {
+            // Reset the engine when switching to a non-Latin layout (CJK,
+            // Cyrillic, etc.) — the composing buffer holds Latin keystrokes
+            // that no longer match the screen. Without this, switching back
+            // to a Latin layout can produce ghost characters.
+            _engine.reset()
             // Pass through when non-Latin layout is active (CJK, Cyrillic, etc.)
             return Unmanaged.passRetained(event)
         }
@@ -268,6 +287,14 @@ extension EventTap {
                 return Unmanaged.passRetained(event)
             }
 
+            // Escape cancels the composing word — reset without committing,
+            // matching user expectation that Esc discards in-progress input.
+            if keyCode == 53 {
+                _engine.reset()
+                perfEnd("break-esc", keyCode: keyCode, app: app)
+                return Unmanaged.passRetained(event)
+            }
+
             // Check for macro expansion first
             if macroManager.isEnabled() {
                 let currentText = getCurrentText()
@@ -361,5 +388,37 @@ extension EventTap {
         // Insert the expansion
         postText(expansion)
         _engine.reset()
+    }
+
+    // MARK: - English mode handler
+
+    /// In English mode, re-post character keys as synthetic events to suppress
+    /// the OS autocomplete/autocorrect popup. Real hardware keyDown events
+    /// trigger the popup; synthetic events from a privateState CGEventSource
+    /// do not.
+    ///
+    /// Non-character keys (backspace, space, arrows, function keys) pass
+    /// through naturally — they don't trigger the autocomplete popup, and
+    /// re-posting them could break special key handling.
+    private func handleEnglishMode(type: CGEventType, keyCode: Int64, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // Non-character keys pass through naturally.
+        if keyCode == 51 || keyCode == 49 || isBreakKey(keyCode) {
+            return Unmanaged.passRetained(event)
+        }
+
+        // Character keys: consume the real event and re-post as synthetic.
+        if type == .keyUp {
+            // Suppress the original keyUp — the synthetic keyDown already
+            // produced the visible character.
+            return nil
+        }
+
+        guard let firstChar = characterFromCGEvent(event) else {
+            return Unmanaged.passRetained(event)
+        }
+
+        // Re-post the same character as a synthetic event.
+        postText(String(firstChar))
+        return nil
     }
 }

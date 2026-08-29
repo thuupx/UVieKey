@@ -191,7 +191,10 @@ final class EventTap: ObservableObject {
                 return
             }
             Logger.shared.info("EventTap: retry #\(attempt + 1) creating tap")
-            // appDetector.start() is already called in start(); don't double-start.
+            // Start the app detector on the retry path too — start() skips it
+            // when accessibility isn't granted, so without this the bundleID
+            // stays empty forever and app classification never works.
+            self.appDetector.start()
             self.startTap()
         }
         startRetryWorkItem = workItem
@@ -255,7 +258,15 @@ final class EventTap: ObservableObject {
     func applyEngineSettings() {
         let defaults = UserDefaults.standard
         let method = defaults.string(forKey: DefaultsKey.inputMethod) ?? "telex"
-        _engine.setInputMethod(method == "vni" ? .vni : .telex)
+        let newMethod: InputMethod = method == "vni" ? .vni : .telex
+        // Reset the engine when the input method changes — stale composing
+        // state from the old method (e.g. Telex tone keys 's','f','r') would
+        // be misinterpreted in the new method (VNI digits '1','2','3'),
+        // producing ghost characters or wrong output.
+        if newMethod != inputMethodManager.inputMethod {
+            _engine.reset()
+        }
+        _engine.setInputMethod(newMethod)
         _engine.setModernOrthography(defaults.bool(forKey: DefaultsKey.modernOrthography))
         _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
         _engine.setQuickTelex(defaults.bool(forKey: DefaultsKey.quickTelex))

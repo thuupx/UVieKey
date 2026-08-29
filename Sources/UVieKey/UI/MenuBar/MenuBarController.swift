@@ -93,7 +93,7 @@ final class MenuBarController: ObservableObject {
                           width: sz.width - inset * 2,
                           height: sz.height - inset * 2)
         let letter = isVietnamese ? "V" : "E"
-        let color: NSColor = isVietnamese ? .systemRed : .systemGray
+        let color: NSColor = isVietnamese ? .systemRed : .black
         let path = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
         path.lineWidth = 1.2
         color.setStroke()
@@ -101,7 +101,7 @@ final class MenuBarController: ObservableObject {
 
         // Draw the letter centered inside the rounded rect.
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.boldSystemFont(ofSize: 12),
+            .font: NSFont.boldSystemFont(ofSize: 13),
             .foregroundColor: color
         ]
         let str = NSString(string: letter)

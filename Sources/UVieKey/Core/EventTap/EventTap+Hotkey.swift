@@ -90,7 +90,12 @@ extension EventTap {
         lastToggleTime = now
 
         DispatchQueue.main.async { [weak self] in
-            self?.inputMethodManager.toggle()
+            guard let self else { return }
+            // Reset the engine BEFORE toggling — stale composing state from
+            // the previous language can produce ghost characters when the
+            // user starts typing in the new language.
+            self._engine.reset()
+            self.inputMethodManager.toggle()
             NSSound.beep()
         }
     }

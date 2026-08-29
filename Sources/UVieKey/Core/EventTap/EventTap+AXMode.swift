@@ -49,7 +49,11 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
 
-        let success = axInjector.feed(char: firstChar)
+        // Apply auto-capitalize if at sentence start (mirrors the CGEvent path)
+        let transformedChar = applyAutoCapitalize(to: firstChar)
+        updateSentenceStartState(after: firstChar)
+
+        let success = axInjector.feed(char: transformedChar)
         return success ? nil : Unmanaged.passRetained(event)
     }
 
