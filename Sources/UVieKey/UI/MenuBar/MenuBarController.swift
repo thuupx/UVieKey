@@ -80,20 +80,40 @@ final class MenuBarController: ObservableObject {
     }
 
     private func makeIcon() -> NSImage {
-        let label = isVietnamese ? "V" : "E"
-        let color = isVietnamese ? NSColor(red: 0.808, green: 0.255, blue: 0.169, alpha: 1.0) : NSColor.secondaryLabelColor
-        let sz = NSSize(width: 20, height: 18)
-        // Pre-render into a bitmap instead of using a lazy drawing handler.
-        // The drawing-handler variant (NSImage(size:flipped:drawingHandler:))
-        // can be cached by the status item on macOS 15 and fail to re-render
-        // when a new image instance is assigned.
+        // Rounded-rect outline with "V" (Vietnamese, red) or "E" (English, gray).
+        // isTemplate = false so the letter colors render as-is.
+        let sz = NSSize(width: 24, height: 20)
         let img = NSImage(size: sz)
         img.lockFocus()
-        let font = NSFont.systemFont(ofSize: 18, weight: .bold)
-        let str = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: color])
-        let s = str.size()
-        str.draw(at: NSPoint(x: (sz.width - s.width) / 2,
-                             y: (sz.height - s.height) / 2))
+
+        let inset: CGFloat = 2.0
+        let corner: CGFloat = 4.0
+        let rect = NSRect(x: inset,
+                          y: inset,
+                          width: sz.width - inset * 2,
+                          height: sz.height - inset * 2)
+        let letter = isVietnamese ? "V" : "E"
+        let color: NSColor = isVietnamese ? .systemRed : .systemGray
+        let path = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
+        path.lineWidth = 1.2
+        color.setStroke()
+        path.stroke()
+
+        // Draw the letter centered inside the rounded rect.
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 12),
+            .foregroundColor: color
+        ]
+        let str = NSString(string: letter)
+        let size = str.size(withAttributes: attrs)
+        let letterRect = NSRect(
+            x: rect.midX - size.width / 2,
+            y: rect.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+        str.draw(in: letterRect, withAttributes: attrs)
+
         img.unlockFocus()
         img.isTemplate = false
         return img
