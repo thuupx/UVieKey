@@ -377,6 +377,18 @@ final class EventTap: ObservableObject {
         keyCode == 123 || keyCode == 124 || keyCode == 125 || keyCode == 126
     }
 
+    /// Cursor-movement key codes: arrows plus Home(115), End(119),
+    /// PageUp(116), PageDown(121). With a movement modifier (Cmd/Ctrl/Option/
+    /// Fn) these jump the cursor to a position the diff engine cannot track,
+    /// so the engine must reset to avoid ghost characters at the new cursor.
+    func isCursorMovementKey(_ keyCode: Int64) -> Bool {
+        isArrowKey(keyCode)
+            || keyCode == 115
+            || keyCode == 119
+            || keyCode == 116
+            || keyCode == 121
+    }
+
     var isCompoundApp: Bool {
         cachedCompoundApps.contains(appDetector.bundleID)
     }

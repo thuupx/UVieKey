@@ -125,8 +125,33 @@ extension EventTap {
         // keystroke diffs against text that no longer matches the screen → ghost
         // characters. Reset so the engine matches the now-empty (or truncated)
         // screen, then let the OS perform the deletion natively.
-        if type == .keyDown && keyCode == 51
+        //
+        // Forward Delete (keyCode 117) with modifiers has the same problem:
+        // Option+Forward Del deletes the next word, Cmd+Forward Del deletes to
+        // end of line/paragraph — both invisible to the engine.
+        if type == .keyDown
+            && (keyCode == 51 || keyCode == 117)
             && (flags.contains(.maskCommand) || flags.contains(.maskControl)) {
+            _engine.reset()
+        }
+        if type == .keyDown
+            && keyCode == 117
+            && (flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn)) {
+            _engine.reset()
+        }
+
+        // Cursor-movement with a movement modifier (Cmd/Ctrl/Option/Fn) jumps
+        // the cursor to a position the diff engine cannot track (e.g. Cmd+
+        // Arrow to line start/end, Option+Arrow word-by-word, Fn+Arrow =
+        // Home/End/Page). Without resetting, the engine keeps stale composing
+        // state and the next keystroke applies backspaces/suffix at the wrong
+        // cursor position → ghost characters (e.g. typing "kiểu á" then
+        // Cmd+Arrow left and continuing inserts stray "as"). Shift+arrows are
+        // already handled by isSelectionShortcut above.
+        if type == .keyDown
+            && (flags.contains(.maskCommand) || flags.contains(.maskControl) ||
+                flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn))
+            && isCursorMovementKey(keyCode) {
             _engine.reset()
         }
 
@@ -276,12 +301,13 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
         if type == .keyDown {
-            // Arrow keys move the cursor within text. The diff engine tracks
-            // text only at the insertion point; once the cursor moves, our
-            // on-screen model is invalid. Reset (don't commit) so stale
-            // composing state cannot be applied at the new cursor position.
-            // Enter/Tab/Escape/etc. are true word boundaries → commit.
-            if isArrowKey(keyCode) {
+            // Cursor-movement keys (arrows, Home, End, PageUp, PageDown) move
+            // the cursor within text. The diff engine tracks text only at the
+            // insertion point; once the cursor moves, our on-screen model is
+            // invalid. Reset (don't commit) so stale composing state cannot be
+            // applied at the new cursor position. Enter/Tab are true word
+            // boundaries → commit. Escape cancels (handled separately below).
+            if isCursorMovementKey(keyCode) {
                 _engine.reset()
                 perfEnd("break-arrow", keyCode: keyCode, app: app)
                 return Unmanaged.passRetained(event)
