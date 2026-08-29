@@ -85,7 +85,10 @@ final class AXTextInjector {
         newText += out
 
         setTextValue(element, text: newText)
-        setCursorToEnd(element, length: newText.count)
+        // AX ranges are measured in UTF-16 code units, not Swift Character
+        // (grapheme) count. Using .count for decomposed Vietnamese or emoji
+        // places the cursor before the real end. Use utf16.count instead.
+        setCursorToEnd(element, length: newText.utf16.count)
 
         if let after = getTextValue(element) {
             if after == newText {
@@ -98,15 +101,18 @@ final class AXTextInjector {
         }
     }
 
-    /// Commit on word boundary.
-    func commit() {
+    /// Commit on word boundary. Returns true if a macro expansion was
+    /// performed (caller should consume the triggering key to avoid a
+    /// trailing space/return after the expanded text).
+    @discardableResult
+    func commit() -> Bool {
         // Check for macro expansion first
         if macroManager.isEnabled() {
             // Include V-C-V auto-committed prefix + composing for macro matching.
             let currentText = engine.committedText() + engine.currentOutput()
             if let expansion = macroManager.findExpansion(for: currentText) {
-                guard let element = getFocusedTextElement() else { return }
-                guard let current = getTextValue(element) else { return }
+                guard let element = getFocusedTextElement() else { return false }
+                guard let current = getTextValue(element) else { return false }
 
                 // Backspace the abbreviation
                 let abbreviationLength = currentText.count
@@ -115,12 +121,13 @@ final class AXTextInjector {
                 newText += expansion
 
                 setTextValue(element, text: newText)
-                setCursorToEnd(element, length: newText.count)
+                setCursorToEnd(element, length: newText.utf16.count)
                 engine.reset()
-                return
+                return true
             }
         }
         _ = engine.commit()
+        return false
     }
 
     func reset() {
@@ -137,13 +144,16 @@ final class AXTextInjector {
             kAXFocusedUIElementAttribute as CFString,
             &focusedElement
         )
-        guard result == .success else { return nil }
-        let element = focusedElement as! AXUIElement
+        guard result == .success, let focused = focusedElement else { return nil }
+        // In Swift, CFTypeRef from Copy functions is ARC-managed — no
+        // manual CFRelease needed. The bridge to AXUIElement transfers
+        // ownership to ARC automatically.
+        let element = focused as! AXUIElement
 
         // Verify it's a text field (has Value attribute)
         var value: CFTypeRef?
         let hasValue = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
-        guard hasValue == .success else { return nil }
+        guard hasValue == .success else { return element }
 
         return element
     }

@@ -74,17 +74,17 @@ final class InputMethodManager: ObservableObject {
 
         currentAppBundleID = bundleID
 
-        // Step 2: Reset engine FIRST to clear ghost characters from previous app
+        // Step 2: Reset engine FIRST to clear ghost characters from previous app.
+        // NotificationCenter.default.post is synchronous — the engine reset
+        // completes before this method continues, so there is no need for a
+        // delay before restoring state. The previous 10ms asyncAfter created a
+        // race window where a fast keystroke could use the wrong language.
         NotificationCenter.default.post(name: .resetEngineAfterAppSwitch, object: nil)
 
-        // Step 3: THEN restore state (after engine is clean)
+        // Step 3: Restore state immediately (engine is already clean).
         if let memory, let state = memory.state(for: bundleID) {
-            // Small delay to ensure engine reset completes before state restoration
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
-                guard let self = self else { return }
-                self.isVietnamese = state.language
-                self.syncEngineEnabled()
-            }
+            isVietnamese = state.language
+            syncEngineEnabled()
         }
     }
 

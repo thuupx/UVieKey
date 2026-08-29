@@ -19,22 +19,25 @@ extension EventTap {
             return success ? nil : Unmanaged.passRetained(event)
         }
 
-        // Space - commit and pass through
+        // Space - commit and pass through (unless macro expansion consumed it)
         if keyCode == 49 {
             if type == .keyUp {
                 return Unmanaged.passRetained(event)
             }
-            axInjector.commit()
-            return Unmanaged.passRetained(event)
+            let expanded = axInjector.commit()
+            // If a macro was expanded, consume the space to avoid a trailing
+            // space after the expanded text. Otherwise pass through so the
+            // app inserts the space natively.
+            return expanded ? nil : Unmanaged.passRetained(event)
         }
 
-        // Break keys - commit and pass through
+        // Break keys - commit and pass through (unless macro expansion consumed it)
         if isBreakKey(keyCode) {
             if type == .keyUp {
                 return Unmanaged.passRetained(event)
             }
-            axInjector.commit()
-            return Unmanaged.passRetained(event)
+            let expanded = axInjector.commit()
+            return expanded ? nil : Unmanaged.passRetained(event)
         }
 
         // Regular character keys

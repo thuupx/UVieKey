@@ -23,6 +23,7 @@ enum AppDefaults {
         "company.thebrowser.Browser", // Arc
         "ai.perplexity.comet", // Comet
         "com.openai.atlas", // ChatGPT Atlas
+        "com.browseros.BrowserOS", // BrowserOS
     ]
 
     /// Chromium-based browsers that need Shift+Left selection + overwrite
@@ -37,6 +38,7 @@ enum AppDefaults {
         "company.thebrowser.Browser", // Arc
         "ai.perplexity.comet", // Comet
         "com.openai.atlas", // ChatGPT Atlas
+        "com.browseros.BrowserOS", // BrowserOS
     ]
 
     /// Apps that bypass IME entirely (system UI, lock screen, etc.).

@@ -122,9 +122,13 @@ final class GlobalHotkeyManager: ObservableObject {
 
     deinit {
         // deinit is nonisolated, so we can't call @MainActor methods.
-        // Call the Carbon API directly to unregister the hotkey.
+        // Call the Carbon API directly to unregister the hotkey and remove
+        // the event handler to avoid leaking the handler ref.
         if let ref = hotkeyRef {
             UnregisterEventHotKey(ref)
+        }
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
         }
     }
 

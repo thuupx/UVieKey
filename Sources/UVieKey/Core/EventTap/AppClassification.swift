@@ -51,11 +51,29 @@ func checkIsExcludedApp(_ bundleID: String) -> Bool {
     getExcludedApps().contains(bundleID)
 }
 
-/// Returns true for shortcuts that select text (Cmd+A, Shift+arrows, etc.).
+/// Returns true for shortcuts that select text (Cmd+A, Ctrl+A, Shift+arrows,
+/// Shift+Home/End/PageUp/PageDown, Cmd+Shift+arrows, etc.).
 /// When the user selects text and types over it, the engine's diff state
 /// becomes invalid because it cannot see the selection.
 func isSelectionShortcut(keyCode: Int64, flags: CGEventFlags) -> Bool {
-    let isCmdA = keyCode == 0 && flags.contains(.maskCommand)
-    let isShiftArrow = flags.contains(.maskShift) && (123...126).contains(keyCode)
-    return isCmdA || isShiftArrow
+    let hasCmd = flags.contains(.maskCommand)
+    let hasCtrl = flags.contains(.maskControl)
+    let hasShift = flags.contains(.maskShift)
+
+    // Cmd+A or Ctrl+A → Select All
+    if keyCode == 0 && (hasCmd || hasCtrl) { return true }
+
+    // Shift + arrow keys → extend selection
+    if hasShift && (123...126).contains(keyCode) { return true }
+
+    // Shift + Home(115) / End(119) / PageUp(116) / PageDown(121) → extend selection
+    if hasShift && (keyCode == 115 || keyCode == 119 || keyCode == 116 || keyCode == 121) {
+        return true
+    }
+
+    // Cmd+Shift+Left/Right → select to line start/end (some apps)
+    // Option+Shift+arrow → select word/paragraph
+    // These are already covered by the Shift+arrow check above.
+
+    return false
 }
