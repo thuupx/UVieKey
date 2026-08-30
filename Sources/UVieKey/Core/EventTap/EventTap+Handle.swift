@@ -43,6 +43,7 @@ extension EventTap {
         if isExcludedApp {
             if !lastExcludedState {
                 _engine.reset()
+                invalidateWebContentCache()
                 lastExcludedState = true
             }
             return Unmanaged.passRetained(event)
@@ -68,6 +69,7 @@ extension EventTap {
         if type == .leftMouseDown || type == .rightMouseDown ||
            type == .leftMouseDragged || type == .rightMouseDragged {
             _engine.reset()
+            invalidateWebContentCache()
             isAtSentenceStart = true
             return Unmanaged.passRetained(event)
         }
@@ -110,6 +112,7 @@ extension EventTap {
         // our state becomes invalid, so reset the engine.
         if type == .keyDown && isSelectionShortcut(keyCode: keyCode, flags: flags) {
             _engine.reset()
+            invalidateWebContentCache()
         }
 
         // Pass through modifier combinations (except Option+Backspace which we handle specially)
@@ -133,11 +136,13 @@ extension EventTap {
             && (keyCode == 51 || keyCode == 117)
             && (flags.contains(.maskCommand) || flags.contains(.maskControl)) {
             _engine.reset()
+            invalidateWebContentCache()
         }
         if type == .keyDown
             && keyCode == 117
             && (flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn)) {
             _engine.reset()
+            invalidateWebContentCache()
         }
 
         // Cursor-movement with a movement modifier (Cmd/Ctrl/Option/Fn) jumps
@@ -153,6 +158,7 @@ extension EventTap {
                 flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn))
             && isCursorMovementKey(keyCode) {
             _engine.reset()
+            invalidateWebContentCache()
         }
 
         // Set needsAXRefresh on Cmd key down so the next keyDown after
@@ -307,8 +313,14 @@ extension EventTap {
             // invalid. Reset (don't commit) so stale composing state cannot be
             // applied at the new cursor position. Enter/Tab are true word
             // boundaries → commit. Escape cancels (handled separately below).
-            if isCursorMovementKey(keyCode) {
+            // Cursor-movement keys (arrows, Home, End, PageUp, PageDown) move
+            // the cursor within text. Tab (keyCode 48) moves focus between
+            // form fields — both invalidate the web-content cache, since the
+            // focused field may have changed (e.g. Tabbing from the Chromium
+            // omnibox into a Google Docs contenteditable div).
+            if isCursorMovementKey(keyCode) || keyCode == 48 {
                 _engine.reset()
+                invalidateWebContentCache()
                 perfEnd("break-arrow", keyCode: keyCode, app: app)
                 return Unmanaged.passRetained(event)
             }

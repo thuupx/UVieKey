@@ -14,23 +14,29 @@ extension EventTap {
     ///   The empty-char sentinel is NOT needed with selection-based delete
     ///   because selecting text doesn't trigger autocomplete dropdowns.
     /// - For Chromium browsers (Chrome, Brave, Edge, Arc, BrowserOS, etc.):
-    ///   Use plain backspaces + sentinel for BOTH replace and pure deletion.
-    ///   Selection-based delete does NOT work in web-based rich text editors
-    ///   like Google Docs — the synthetic Shift+Left events don't establish
-    ///   a selection in the contenteditable div, so postText appends instead
-    ///   of replacing, producing wrong text (e.g. "goo" → "gôoo" instead of
-    ///   "goo"). The sentinel (U+202F) dismisses the omnibox autocomplete
-    ///   before backspacing, preventing duplicate characters.
+    ///   The right strategy depends on whether the focused field is native or
+    ///   web content. The omnibox/address bar is a native `AXTextField` where
+    ///   Shift+Left selection works — use it (avoids the U+202F sentinel
+    ///   corrupting the URL/search text). Web contenteditable fields (Google
+    ///   Docs) don't establish a selection from synthetic Shift+Left, so
+    ///   `postText` would append instead of replacing — use plain backspaces
+    ///   + sentinel there. The distinction is made via `isFocusedFieldWebContent()`
+    ///   which walks the AX parent chain for an `AXWebArea` ancestor.
     /// - For pure deletions (out is empty, any compound app), use plain
     ///   backspaces with the empty-char sentinel when bs > 1.
     func applyCompoundBackspaces(bs: Int, out: String) {
-        if !out.isEmpty && !isChromium {
-            // Non-Chromium replace: selection-based delete is atomic (no flicker).
-            // Shift+Left selects the text without deleting it, then postText
-            // replaces the selection in one operation.
+        if !out.isEmpty && (!isChromium || !isFocusedFieldWebContent()) {
+            // Replace in a non-web-content field: selection-based delete is
+            // atomic (no flicker). Shift+Left selects the text without
+            // deleting it, then postText replaces the selection in one
+            // operation. Covers non-Chromium compound apps and Chromium
+            // native fields (omnibox/address bar) — the latter avoids the
+            // U+202F sentinel corrupting the URL/search text, restoring the
+            // pre-1.5.0 behavior that the caf1184 commit regressed.
             applySelectionBackspaces(bs)
         } else {
-            // Chromium replace OR pure deletion: plain backspaces + sentinel.
+            // Chromium web contenteditable (Google Docs) replace OR pure
+            // deletion (any compound app): plain backspaces + sentinel.
             let needsEmptyChar = bs > 1
             if needsEmptyChar {
                 sendEmptyCharacter()

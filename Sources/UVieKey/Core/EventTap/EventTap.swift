@@ -76,6 +76,12 @@ final class EventTap: ObservableObject {
     /// Prevents redundant `CGEvent.tapEnable` calls on every app switch.
     var lastExcludedState = false
 
+    /// Cached result of `isFocusedFieldWebContent()`. The focused field only
+    /// changes on mouse down, app switch, or cursor-movement keys — all of
+    /// which already reset the engine and call `invalidateWebContentCache()`.
+    /// This avoids a ~5ms AX parent-chain walk on every compound backspace.
+    var cachedIsWebContent: Bool? = nil
+
     init(inputMethodManager: InputMethodManager) {
         self.inputMethodManager = inputMethodManager
         self.axInjector = AXTextInjector(engine: _engine)
@@ -319,6 +325,8 @@ final class EventTap: ObservableObject {
             // the tap was disabled (excluded app), fnIsDown would be stale.
             self.fnIsDown = false
             self.fnWasTap = false
+            // Focus moved to a different app — the web-content cache is stale.
+            self.invalidateWebContentCache()
             self.updateExcludedTapState()
         }
     }
@@ -332,6 +340,8 @@ final class EventTap: ObservableObject {
             guard let self = self else { return }
             // Reset engine to clear ghost characters from previous app
             self._engine.reset()
+            // Focus moved — the web-content cache is stale.
+            self.invalidateWebContentCache()
             // Reset Fn tracking — Fn may have been released while the tap was
             // disabled for an excluded app, leaving fnIsDown stale.
             self.fnIsDown = false
@@ -387,6 +397,78 @@ final class EventTap: ObservableObject {
             || keyCode == 119
             || keyCode == 116
             || keyCode == 121
+    }
+
+    /// Detects whether the currently focused AX text field is web content
+    /// (e.g. a Google Docs `contenteditable` div) vs a native UI text field
+    /// (e.g. the Chromium omnibox/address bar).
+    ///
+    /// Chromium exposes web content under an `AXWebArea` role. The omnibox is
+    /// a native `AXTextField` whose parent chain contains no `AXWebArea`.
+    /// Synthetic Shift+Left selection works in native fields but NOT in web
+    /// contenteditable (the selection isn't established, so `postText` appends
+    /// instead of replacing). This distinction lets us pick the right
+    /// backspace strategy per field within the same Chromium browser.
+    ///
+    /// Result is cached in `cachedIsWebContent` and invalidated by
+    /// `invalidateWebContentCache()` on focus-changing events.
+    func isFocusedFieldWebContent() -> Bool {
+        if let cached = cachedIsWebContent {
+            return cached
+        }
+        let result = computeIsFocusedFieldWebContent()
+        cachedIsWebContent = result
+        return result
+    }
+
+    /// Clear the cached web-content flag. Called on mouse down, app switch,
+    /// cursor-movement keys, and engine reset — all events that can move the
+    /// focus to a different field.
+    func invalidateWebContentCache() {
+        cachedIsWebContent = nil
+    }
+
+    /// Walk the focused element's parent chain (up to 8 levels) looking for
+    /// an `AXWebArea` role. Returns `false` if AX is unavailable or the
+    /// focused element can't be resolved (safe default — native field path
+    /// uses selection-based backspace which is the less destructive option).
+    private func computeIsFocusedFieldWebContent() -> Bool {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focused: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXFocusedUIElementAttribute as CFString,
+            &focused
+        )
+        guard result == .success, let focused = focused else { return false }
+        // AXUIElement is a CoreFoundation type — `as?` is treated as always
+        // succeeding by the compiler, so verify the actual CFTypeID before
+        // treating `focused` as an AXUIElement. A mismatch (e.g. a CFString
+        // returned for a broken AX hierarchy) would otherwise crash the
+        // event-tap callback.
+        guard CFGetTypeID(focused) == AXUIElementGetTypeID() else { return false }
+        var element = focused as! AXUIElement
+
+        for _ in 0..<8 {
+            var role: CFTypeRef?
+            AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+            if let roleStr = role as? String, roleStr == "AXWebArea" {
+                return true
+            }
+            // Walk up to parent.
+            var parent: CFTypeRef?
+            let parentResult = AXUIElementCopyAttributeValue(
+                element,
+                kAXParentAttribute as CFString,
+                &parent
+            )
+            guard parentResult == .success, let parent = parent,
+                  CFGetTypeID(parent) == AXUIElementGetTypeID() else {
+                return false
+            }
+            element = parent as! AXUIElement
+        }
+        return false
     }
 
     var isCompoundApp: Bool {
