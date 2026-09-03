@@ -77,28 +77,40 @@ final class AXTextInjector {
 
     private func tryInject(bs: Int, out: String, element: AXUIElement) -> Bool {
         guard let current = getTextValue(element) else {
+            if Logger.shared.keystrokeTraceEnabled {
+                Logger.shared.keystroke("axInject: value read failed")
+            }
             return false
         }
 
-        var newText = current
-        for _ in 0..<bs { newText = String(newText.dropLast()) }
+        // Single dropLast(bs) — a per-iteration loop was O(bs·n) with a fresh
+        // String allocation per iteration (n = full field text length).
+        // dropLast drops grapheme clusters, matching the old loop's semantics.
+        var newText = String(current.dropLast(bs))
         newText += out
 
-        setTextValue(element, text: newText)
+        if Logger.shared.keystrokeTraceEnabled {
+            Logger.shared.keystroke("axInject bs=\(bs) out='\(out)' read='\(current)' write='\(newText)'")
+        }
+
+        // Trust the AXError instead of a read-back verification. The read-back
+        // raced with Spotlight's live search: a write that had already landed
+        // followed by a stale read returned false → the caller let the real
+        // keystroke pass through natively ON TOP of the written text → double
+        // input ("viej" became "viejj" → fast-typing "việt" became "vieệt").
+        // A genuinely failed write is already reported by the error code.
+        let setResult = setTextValue(element, text: newText)
+        guard setResult == .success else {
+            if Logger.shared.keystrokeTraceEnabled {
+                Logger.shared.keystroke("axInject: set failed err=\(setResult.rawValue)")
+            }
+            return false
+        }
         // AX ranges are measured in UTF-16 code units, not Swift Character
         // (grapheme) count. Using .count for decomposed Vietnamese or emoji
         // places the cursor before the real end. Use utf16.count instead.
         setCursorToEnd(element, length: newText.utf16.count)
-
-        if let after = getTextValue(element) {
-            if after == newText {
-                return true
-            } else {
-                return false
-            }
-        } else {
-            return false
-        }
+        return true
     }
 
     /// Commit on word boundary. Returns true if a macro expansion was
@@ -114,10 +126,9 @@ final class AXTextInjector {
                 guard let element = getFocusedTextElement() else { return false }
                 guard let current = getTextValue(element) else { return false }
 
-                // Backspace the abbreviation
+                // Backspace the abbreviation (single dropLast — see tryInject)
                 let abbreviationLength = currentText.count
-                var newText = current
-                for _ in 0..<abbreviationLength { newText = String(newText.dropLast()) }
+                var newText = String(current.dropLast(abbreviationLength))
                 newText += expansion
 
                 setTextValue(element, text: newText)
@@ -148,13 +159,10 @@ final class AXTextInjector {
         // In Swift, CFTypeRef from Copy functions is ARC-managed — no
         // manual CFRelease needed. The bridge to AXUIElement transfers
         // ownership to ARC automatically.
+        // No kAXValueAttribute probe here: it cost one AX round-trip per
+        // keystroke and both branches returned the element anyway. Non-text
+        // fields are rejected by `tryInject` (getTextValue returns nil).
         let element = focused as! AXUIElement
-
-        // Verify it's a text field (has Value attribute)
-        var value: CFTypeRef?
-        let hasValue = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
-        guard hasValue == .success else { return element }
-
         return element
     }
 
@@ -166,7 +174,7 @@ final class AXTextInjector {
         return value as? String
     }
 
-    private func setTextValue(_ element: AXUIElement, text: String) {
+    private func setTextValue(_ element: AXUIElement, text: String) -> AXError {
         AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef)
     }
 

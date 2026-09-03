@@ -10,8 +10,9 @@ extension EventTap {
 
     /// Transform a character to uppercase if auto-capitalize is enabled and at sentence start
     func applyAutoCapitalize(to char: Character) -> Character {
-        let shouldCapitalize = UserDefaults.standard.bool(forKey: DefaultsKey.uppercaseFirstChar)
-        guard shouldCapitalize && isAtSentenceStart else { return char }
+        // `autoCapitalizeEnabled` is cached in `applyEngineSettings()` — this
+        // runs on every character keystroke, so no UserDefaults read here.
+        guard autoCapitalizeEnabled && isAtSentenceStart else { return char }
 
         // Only capitalize alphabetic characters
         guard char.isLetter else { return char }

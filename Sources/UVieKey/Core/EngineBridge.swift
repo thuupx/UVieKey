@@ -52,6 +52,16 @@ func uvie_engine_raw_chars(_ engine: OpaquePointer?, _ out_buf: UnsafeMutablePoi
 final class EngineBridge {
     private var engine: OpaquePointer?
 
+    /// Output buffer capacity for FFI calls (engine output is a single
+    /// syllable, well under 128 bytes).
+    private static let bufferCapacity = 128
+    /// Reusable output buffer for FFI calls. The engine is only touched from
+    /// the event-tap callback (main runloop — see `EventTap.startTap`), so a
+    /// single scratch buffer avoids a heap alloc + zeroing on every keystroke.
+    /// A static constant is passed as the capacity to avoid an exclusive-access
+    /// conflict between `&scratch` and `scratch.count` in the same call.
+    private var scratch = [CChar](repeating: 0, count: EngineBridge.bufferCapacity)
+
     var isComposing: Bool {
         guard let engine else { return false }
         return uvie_engine_is_composing(engine) != 0
@@ -106,26 +116,23 @@ final class EngineBridge {
     /// the original ASCII byte (e.g., 'A' stays 'A') instead of lowercasing it.
     func feed(char: Character) -> (Int, String) {
         guard let engine else { return (0, "") }
-        var buf = [CChar](repeating: 0, count: 128)
         // Only ASCII keys are feedable; non-ASCII passes 0 which the engine ignores.
         let byte = CChar(char.asciiValue ?? 0)
-        let bs = uvie_engine_feed(engine, byte, &buf, buf.count)
-        return (bs, String(cString: buf))
+        let bs = uvie_engine_feed(engine, byte, &scratch, Self.bufferCapacity)
+        return (bs, String(cString: scratch))
     }
 
     /// Backspace. Returns (backspaces, new_output).
     func backspace() -> (Int, String) {
         guard let engine else { return (0, "") }
-        var buf = [CChar](repeating: 0, count: 128)
-        let bs = uvie_engine_backspace(engine, &buf, buf.count)
-        return (bs, String(cString: buf))
+        let bs = uvie_engine_backspace(engine, &scratch, Self.bufferCapacity)
+        return (bs, String(cString: scratch))
     }
 
     func commit() -> (Int, String) {
         guard let engine else { return (0, "") }
-        var buf = [CChar](repeating: 0, count: 128)
-        let bs = uvie_engine_commit(engine, &buf, buf.count)
-        return (bs, String(cString: buf))
+        let bs = uvie_engine_commit(engine, &scratch, Self.bufferCapacity)
+        return (bs, String(cString: scratch))
     }
 
     func reset() {
@@ -135,23 +142,20 @@ final class EngineBridge {
 
     func committedText() -> String {
         guard let engine else { return "" }
-        var buf = [CChar](repeating: 0, count: 128)
-        _ = uvie_engine_committed_text(engine, &buf, buf.count)
-        return String(cString: buf)
+        _ = uvie_engine_committed_text(engine, &scratch, Self.bufferCapacity)
+        return String(cString: scratch)
     }
-    
+
     func currentOutput() -> String {
         guard let engine else { return "" }
-        var buf = [CChar](repeating: 0, count: 128)
-        _ = uvie_engine_current_output(engine, &buf, buf.count)
-        return String(cString: buf)
+        _ = uvie_engine_current_output(engine, &scratch, Self.bufferCapacity)
+        return String(cString: scratch)
     }
 
     func rawChars() -> String {
         guard let engine else { return "" }
-        var buf = [CChar](repeating: 0, count: 128)
-        _ = uvie_engine_raw_chars(engine, &buf, buf.count)
-        return String(cString: buf)
+        _ = uvie_engine_raw_chars(engine, &scratch, Self.bufferCapacity)
+        return String(cString: scratch)
     }
 }
 

@@ -46,18 +46,62 @@ extension EventTap {
         }
     }
 
+    /// Warm up the synthetic keycode path right after the tap is created.
+    ///
+    /// The FIRST keycode event posted by a freshly-rebuilt binary can be
+    /// transiently dropped while the system re-validates the posting process
+    /// (observed: the first synthetic backspace after launching a new build
+    /// never reached the focused app — fast-typing "việt" became "vieệt";
+    /// every later launch without a rebuild was unaffected. Unicode-string
+    /// events via `postText` were never affected — only keycode posts).
+    ///
+    /// The warm-up posts sacrificial events that are harmless in every
+    /// failure mode:
+    /// - keyUp events never insert text, so a phantom keyUp is a no-op even
+    ///   if delivered late or out of order.
+    /// - a bare Cmd keyDown+keyUp pair with no other key in between produces
+    ///   no character and leaves no modifier state behind.
+    /// All events are tagged with `syntheticTag` so this tap skips them.
+    func warmUpSyntheticKeycodePath() {
+        guard let eventSource else { return }
+        func post(_ event: CGEvent?, flags: CGEventFlags) {
+            guard let event else { return }
+            event.flags = flags
+            event.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
+            event.post(tap: .cgSessionEventTap)
+        }
+        // Absorb a keyDown-targeted drop: bare Cmd tap.
+        post(CGEvent(keyboardEventSource: eventSource, virtualKey: 54, keyDown: true), flags: [])
+        post(CGEvent(keyboardEventSource: eventSource, virtualKey: 54, keyDown: false), flags: [])
+        // Absorb an any-keycode-event drop: phantom keyUps.
+        post(CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: false), flags: [])
+        post(CGEvent(keyboardEventSource: eventSource, virtualKey: 123, keyDown: false), flags: .maskShift)
+    }
+
     /// Standard backspaces.
     ///
     /// Only posts keyDown — the synthetic keyUp is unnecessary for deletion
     /// and doubles the event count, amplifying the backspace-then-insert
     /// flicker on every diff replace. Apps process the delete on keyDown.
+    ///
+    /// Posts to `.cgSessionEventTap`, NOT `.cghidEventTap`: keycode-only
+    /// events posted at the HID level traverse the HID translation path,
+    /// where the first post after a binary rebuild can be transiently
+    /// dropped (Input Monitoring re-evaluation) — the swallowed backspace
+    /// corrupts the first diff replace after launch ("việt" → "vieệt").
+    /// Session-level posting skips the HID path entirely. ALL synthetic
+    /// events must post to the SAME tap location so backspace → text
+    /// ordering is guaranteed (FIFO within one entry point).
     func applyBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
         perfNoteEvent(count)
+        if Logger.shared.keystrokeTraceEnabled {
+            Logger.shared.keystroke("postBS n=\(count)")
+        }
         for _ in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: true)
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
-            down?.post(tap: .cghidEventTap)
+            down?.post(tap: .cgSessionEventTap)
         }
     }
 
@@ -72,7 +116,7 @@ extension EventTap {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 123, keyDown: true)
             down?.flags = .maskShift
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
-            down?.post(tap: .cghidEventTap)
+            down?.post(tap: .cgSessionEventTap)
         }
     }
 
@@ -86,7 +130,7 @@ extension EventTap {
         let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: true)
         down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
         down?.keyboardSetUnicodeString(stringLength: 1, unicodeString: [emptyChar])
-        down?.post(tap: .cghidEventTap)
+        down?.post(tap: .cgSessionEventTap)
     }
 
     func postText(_ string: String) {
@@ -94,12 +138,15 @@ extension EventTap {
         perfNoteEvent(1)
         let utf16 = Array(string.utf16)
         guard !utf16.isEmpty else { return }
+        if Logger.shared.keystrokeTraceEnabled {
+            Logger.shared.keystroke("postText '\(string)'")
+        }
         // Only post keyDown — apps render text on keyDown; the synthetic keyUp
         // is unnecessary for text input and doubles the event count, amplifying
         // the backspace-then-insert flicker on every diff replace.
         let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: true)
         down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
         down?.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
-        down?.post(tap: .cghidEventTap)
+        down?.post(tap: .cgSessionEventTap)
     }
 }

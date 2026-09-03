@@ -8,6 +8,12 @@ final class MacroManager: ObservableObject {
     @Published var macros: [Macro] = []
     
     private let macrosKey = "Macros"
+    /// Cached `macroEnabled` toggle. `isEnabled()` runs on every Space/break
+    /// key from the event-tap callback — a UserDefaults read there is
+    /// disk-backed and can stall the tap. Refreshed on `didChangeNotification`
+    /// (the Settings/Popover toggles write via @AppStorage in-process).
+    private var enabledCache = false
+    private var defaultsObserver: NSObjectProtocol?
     
     struct Macro: Identifiable, Codable {
         let id: UUID
@@ -23,6 +29,14 @@ final class MacroManager: ObservableObject {
     
     private init() {
         loadMacros()
+        enabledCache = UserDefaults.standard.bool(forKey: DefaultsKey.macroEnabled)
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.enabledCache = UserDefaults.standard.bool(forKey: DefaultsKey.macroEnabled)
+        }
     }
     
     // MARK: - Persistence
@@ -68,6 +82,6 @@ final class MacroManager: ObservableObject {
     }
     
     func isEnabled() -> Bool {
-        UserDefaults.standard.bool(forKey: DefaultsKey.macroEnabled)
+        enabledCache
     }
 }

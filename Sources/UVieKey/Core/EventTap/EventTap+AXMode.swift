@@ -4,8 +4,9 @@ import Cocoa
 
 extension EventTap {
     func handleAXEvent(type: CGEventType, keyCode: Int64, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // Auto-disable on non-Latin keyboard layout for AX mode
-        if UserDefaults.standard.bool(forKey: DefaultsKey.autoDisableOnNonLatinLayout),
+        // Auto-disable on non-Latin keyboard layout for AX mode (flag cached
+        // in `applyEngineSettings` — no UserDefaults read on the hot path)
+        if autoDisableOnNonLatinLayout,
            layoutMonitor.isNonLatinLayout {
             return Unmanaged.passRetained(event)
         }
@@ -54,6 +55,9 @@ extension EventTap {
         updateSentenceStartState(after: firstChar)
 
         let success = axInjector.feed(char: transformedChar)
+        if Logger.shared.keystrokeTraceEnabled {
+            Logger.shared.keystroke("axFeed char='\(transformedChar)' success=\(success)")
+        }
         return success ? nil : Unmanaged.passRetained(event)
     }
 

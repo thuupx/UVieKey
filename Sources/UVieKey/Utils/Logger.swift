@@ -21,31 +21,54 @@ final class Logger {
     private let logURL: URL
     private var fileHandle: FileHandle?
     private var currentSize: Int = 0
+    private var defaultsObserver: NSObjectProtocol?
 
     /// UserDefaults key for the keystroke trace toggle (Settings → Nâng cao).
     static let keystrokeTraceKey = "KeystrokeTraceEnabled"
 
+    /// Cached keystroke-trace toggle. `keystroke()` runs on every keystroke
+    /// from the event-tap callback — a UserDefaults read there is disk-backed
+    /// and can stall the tap. The cache is refreshed on
+    /// `didChangeNotification` (the Settings toggle writes via @AppStorage
+    /// in-process, so the notification always fires on the main thread).
+    private var traceEnabledCache = false
+
     /// When true, every feed/backspace/commit call is logged with engine state.
     /// Off by default — only enabled on user request for bug reproduction.
     var keystrokeTraceEnabled: Bool {
-        UserDefaults.standard.bool(forKey: Self.keystrokeTraceKey)
+        traceEnabledCache
     }
 
     private init() {
-        guard let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+        traceEnabledCache = UserDefaults.standard.bool(forKey: Self.keystrokeTraceKey)
+
+        if let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first {
+            let logsDir = libraryDir.appending(path: "Logs/UVieKey")
+            try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+            logURL = logsDir.appending(path: "uviekey.log")
+        } else {
             // Fallback to tmp if the user library directory is unavailable.
             logURL = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "uviekey.log")
-            return
         }
-        let logsDir = libraryDir.appending(path: "Logs/UVieKey")
-        try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
-        logURL = logsDir.appending(path: "uviekey.log")
+
+        // Registered after all stored properties are initialized — the closure
+        // captures `self`, which is only valid once init completes.
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.traceEnabledCache = UserDefaults.standard.bool(forKey: Self.keystrokeTraceKey)
+        }
 
         // File handle is opened lazily on the first write (see `writeLine`),
         // so when diagnostics are off we never create `uviekey.log` on disk.
     }
 
     deinit {
+        if let defaultsObserver {
+            NotificationCenter.default.removeObserver(defaultsObserver)
+        }
         try? fileHandle?.close()
     }
 
@@ -59,10 +82,10 @@ final class Logger {
     /// Log a keystroke trace line. Only writes if `keystrokeTraceEnabled` is true.
     /// Kept on a dedicated queue so the event-tap thread never blocks on disk I/O.
     func keystroke(_ message: String) {
-        // Read the toggle once and pass it down so `log()` doesn't re-read
-        // UserDefaults on every keystroke (hot path).
-        let traceEnabled = keystrokeTraceEnabled
-        guard traceEnabled else { return }
+        // `keystrokeTraceEnabled` is a cached flag — no UserDefaults read on
+        // the hot path. Callers on the event-tap callback should additionally
+        // gate the message construction behind this flag.
+        guard keystrokeTraceEnabled else { return }
         log(message, level: "TRACE", fileLoggingForced: true)
     }
 

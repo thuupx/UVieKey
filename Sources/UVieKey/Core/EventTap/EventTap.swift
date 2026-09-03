@@ -40,6 +40,34 @@ final class EventTap: ObservableObject {
     /// in `applyEngineSettings()` when settings change.
     var fnHotkeyEnabled = false
 
+    /// Cached `uppercaseFirstChar` flag. Avoids a UserDefaults read on every
+    /// character keystroke (same rationale as `fnHotkeyEnabled`). Refreshed in
+    /// `applyEngineSettings()` when settings change.
+    var autoCapitalizeEnabled = false
+
+    /// Cached `autoDisableOnNonLatinLayout` flag. Avoids a UserDefaults read
+    /// on every keyDown (same rationale as `fnHotkeyEnabled`). Refreshed in
+    /// `applyEngineSettings()` when settings change.
+    var autoDisableOnNonLatinLayout = false
+
+    /// Remaining one-shot AX bundleID refresh attempts. Armed (set to
+    /// `axRefreshMaxAttempts`) when a potential app-switch trigger is
+    /// observed (Cmd/Ctrl/Fn flagsChanged, mouse down). Each keyDown in an
+    /// unclassified app spends one attempt on a fresh AX lookup; the counter
+    /// clears as soon as the lookup finds a DIFFERENT app.
+    ///
+    /// A single attempt is NOT enough for Cmd+Space: the Space keyDown itself
+    /// spends one while Spotlight is still opening (AX still reports the
+    /// previous app), and the panel's AX focus settles only a few hundred ms
+    /// later. The old per-keyDown refresh survived that because every
+    /// keystroke retried; the budget keeps that retry behavior while capping
+    /// the AX cost at N lookups per trigger. Event-tap callback state, like
+    /// `fnIsDown`.
+    var axRefreshAttempts = 0
+
+    /// AX lookups budgeted per armed trigger — see `axRefreshAttempts`.
+    static let axRefreshMaxAttempts = 3
+
     /// Retry state for `start()` (Bug #1, #6, #10). After a fresh login or
     /// onboarding, `AXIsProcessTrustedWithOptions` can return true from a
     /// stale cache while `CGEvent.tapCreate` still fails — the accessibility
@@ -172,6 +200,10 @@ final class EventTap: ObservableObject {
         CFRunLoopAddSource(mainRunLoop, source, .commonModes)
         self.tapRunLoop = mainRunLoop
         CGEvent.tapEnable(tap: newTap, enable: true)
+        // Absorb the one-time keycode-post drop a freshly-rebuilt binary can
+        // hit (first synthetic backspace after launch was swallowed —
+        // "việt" typed fast became "vieệt"). See warmUpSyntheticKeycodePath.
+        warmUpSyntheticKeycodePath()
 
         // Success — clear any pending retry and notify the host.
         startRetryWorkItem?.cancel()
@@ -280,6 +312,11 @@ final class EventTap: ObservableObject {
         // Cache the Fn hotkey flag so handleHotkey() doesn't read UserDefaults
         // on every event-tap callback (flagsChanged for any modifier key).
         fnHotkeyEnabled = defaults.bool(forKey: DefaultsKey.inputMethodHotkeyEnabled)
+        // Cache the auto-capitalize + non-Latin-layout flags too — both are
+        // read on every keystroke from the event-tap callback (same rationale
+        // as `fnHotkeyEnabled` above).
+        autoCapitalizeEnabled = defaults.bool(forKey: DefaultsKey.uppercaseFirstChar)
+        autoDisableOnNonLatinLayout = defaults.bool(forKey: DefaultsKey.autoDisableOnNonLatinLayout)
         // Reload app classification caches too — user may have added/removed
         // excluded or compound apps in Settings.
         reloadAppCaches()

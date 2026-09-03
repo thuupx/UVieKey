@@ -56,8 +56,17 @@ extension EventTap {
             return nil
         }
 
-        // Pass through flags changes
+        // Pass through flags changes. A Cmd/Ctrl/Fn press is a potential
+        // app-switch trigger (Cmd+Space → Spotlight, Ctrl+Space input source,
+        // Globe key) — arm the one-shot AX refresh so the next keyDown in an
+        // unclassified app re-resolves the bundleID. Shift is excluded:
+        // Shift presses are common (capital letters) and never switch apps.
         if type == .flagsChanged {
+            let flags = event.flags
+            if flags.contains(.maskCommand) || flags.contains(.maskControl)
+                || flags.contains(.maskSecondaryFn) {
+                axRefreshAttempts = EventTap.axRefreshMaxAttempts
+            }
             return Unmanaged.passRetained(event)
         }
 
@@ -66,11 +75,14 @@ extension EventTap {
         // user selects text with the mouse. Also reset auto-capitalize state —
         // clicking into a new text field means we don't know if we're at a
         // sentence start, so default to true (safe for new text fields).
+        // A click can also change the focused app without a workspace
+        // notification (menu-bar Spotlight icon) — arm the AX refresh.
         if type == .leftMouseDown || type == .rightMouseDown ||
            type == .leftMouseDragged || type == .rightMouseDragged {
             _engine.reset()
             invalidateWebContentCache()
             isAtSentenceStart = true
+            axRefreshAttempts = EventTap.axRefreshMaxAttempts
             return Unmanaged.passRetained(event)
         }
 
@@ -94,17 +106,28 @@ extension EventTap {
 
         // Spotlight and other system UI overlays don't trigger
         // didActivateApplicationNotification, so bundleID stays stale as
-        // the previous app. If the current bundleID isn't classified,
-        // do a fresh AX lookup on every keyDown. AX call is ~5ms and
-        // only runs for unclassified apps — classified apps (Notes,
-        // Safari, Chromium) skip it.
+        // the previous app. When a potential app-switch trigger was observed
+        // (Cmd/Ctrl/Fn keyDown, mouse down — see `axRefreshAttempts`), spend
+        // budgeted attempts on fresh AX lookups. The budget matters for
+        // Cmd+Space: the Space keyDown itself spends one attempt while
+        // Spotlight is still opening (AX still reports the previous app), so
+        // the remaining attempts must keep retrying until the lookup returns
+        // a DIFFERENT app — only then is the detection consumed. The AX call
+        // is ~1-5ms, so the cost stays bounded at N lookups per trigger.
         if type == .keyDown,
+           axRefreshAttempts > 0,
            !cachedExcludedApps.contains(app),
            !cachedCompoundApps.contains(app),
            !cachedChromiumApps.contains(app),
            !axApps.contains(app) {
             appDetector.refreshBundleID()
-            app = appDetector.bundleID
+            let fresh = appDetector.bundleID
+            if fresh != app {
+                axRefreshAttempts = 0
+            } else {
+                axRefreshAttempts -= 1
+            }
+            app = fresh
         }
 
         // Detect text-selection shortcuts. The diff engine tracks text at the
@@ -161,11 +184,11 @@ extension EventTap {
             invalidateWebContentCache()
         }
 
-        // Set needsAXRefresh on Cmd key down so the next keyDown after
-        // Cmd+Space (Spotlight) does a fresh AX bundleID lookup. Spotlight
-        // doesn't fire didActivateApplicationNotification, so without this
-        // the bundleID stays stale as the previous app and AX mode never
-        // activates. Cmd key comes as .flagsChanged, handled above.
+        // Modifier combos pass through untouched. The Cmd/Ctrl/Fn keyDowns
+        // that arm the AX refresh budget arrive as .flagsChanged (handled
+        // above) — Spotlight doesn't fire didActivateApplicationNotification,
+        // so without that arming the bundleID stays stale as the previous app
+        // and AX mode never activates.
         if (flags.contains(.maskCommand) || flags.contains(.maskControl) ||
            flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn)) && !isOptionBackspace {
             return Unmanaged.passRetained(event)
@@ -184,8 +207,9 @@ extension EventTap {
             return handleEnglishMode(type: type, keyCode: keyCode, event: event)
         }
 
-        // Auto-disable on non-Latin keyboard layout
-        if UserDefaults.standard.bool(forKey: DefaultsKey.autoDisableOnNonLatinLayout),
+        // Auto-disable on non-Latin keyboard layout (flag cached in
+        // `applyEngineSettings` — no UserDefaults read on the hot path)
+        if autoDisableOnNonLatinLayout,
            layoutMonitor.isNonLatinLayout {
             // Reset the engine when switching to a non-Latin layout (CJK,
             // Cyrillic, etc.) — the composing buffer holds Latin keystrokes
@@ -242,6 +266,9 @@ extension EventTap {
         }
 
         let (bs, out) = _engine.backspace()
+        if Logger.shared.keystrokeTraceEnabled {
+            Logger.shared.keystroke("backspace bs=\(bs) out='\(out)' compound=\(isCompoundApp) chromium=\(isChromium)")
+        }
         if bs == 0 && out.isEmpty && !_engine.isComposing {
             // Not composing - let OS handle it
             perfEnd("backspace-os", keyCode: keyCode, app: app)
@@ -379,7 +406,12 @@ extension EventTap {
         let transformedChar = applyAutoCapitalize(to: firstChar)
 
         let (bs, out) = _engine.feed(char: transformedChar)
-        Logger.shared.keystroke("feed char='\(transformedChar)' keyCode=\(keyCode) bs=\(bs) out='\(out)' compound=\(isCompoundApp) chromium=\(isChromium)")
+        // Gate the whole trace call — when trace is off (the common case) the
+        // string interpolation and the isCompoundApp/isChromium Set lookups
+        // must not run. `keystrokeTraceEnabled` is a cached flag (Logger).
+        if Logger.shared.keystrokeTraceEnabled {
+            Logger.shared.keystroke("feed char='\(transformedChar)' keyCode=\(keyCode) bs=\(bs) out='\(out)' app=\(app) compound=\(isCompoundApp) chromium=\(isChromium)")
+        }
 
         // Update sentence start state based on what was typed
         updateSentenceStartState(after: firstChar)
