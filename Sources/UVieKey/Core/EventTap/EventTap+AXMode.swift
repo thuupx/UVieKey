@@ -2,6 +2,19 @@ import Cocoa
 
 // MARK: - EventTap - AX Mode (Accessibility text injection)
 
+/// The AX-injection surface used by `handleAXEvent`. Production talks to the
+/// real Accessibility API via `AXTextInjector`; tests substitute a stub so
+/// Spotlight routing can be simulated without AX IPC.
+protocol AXTextInjecting: AnyObject {
+    func feed(char: Character) -> Bool
+    func backspace() -> Bool
+    @discardableResult
+    func commit() -> Bool
+    func reset()
+}
+
+extension AXTextInjector: AXTextInjecting {}
+
 extension EventTap {
     func handleAXEvent(type: CGEventType, keyCode: Int64, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Auto-disable on non-Latin keyboard layout for AX mode (flag cached

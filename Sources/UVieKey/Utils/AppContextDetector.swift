@@ -9,7 +9,15 @@ import Combine
 /// Spotlight detection was removed — it's handled via `AppDefaults.axApps`
 /// which contains "com.apple.Spotlight", so AX mode kicks in automatically
 /// when Spotlight is the frontmost app.
-final class AppContextDetector {
+protocol AppContextDetecting: AnyObject {
+    var bundleID: String { get }
+    func start()
+    func stop()
+    func updateBundleID(_ app: NSRunningApplication)
+    func refreshBundleID()
+}
+
+final class AppContextDetector: AppContextDetecting {
     private var _bundleID: String = ""
     private var cancellables = Set<AnyCancellable>()
 

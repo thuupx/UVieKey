@@ -12,7 +12,8 @@ final class MacroManager: ObservableObject {
     /// key from the event-tap callback — a UserDefaults read there is
     /// disk-backed and can stall the tap. Refreshed on `didChangeNotification`
     /// (the Settings/Popover toggles write via @AppStorage in-process).
-    private var enabledCache = false
+    /// Internal so tests can pin the toggle without touching real defaults.
+    var enabledCache = false
     private var defaultsObserver: NSObjectProtocol?
     
     struct Macro: Identifiable, Codable {

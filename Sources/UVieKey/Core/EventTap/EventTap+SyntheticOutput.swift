@@ -2,6 +2,19 @@ import Cocoa
 
 // MARK: - EventTap - Synthetic Output
 
+/// The synthetic-event injection surface of `EventTap`. Production posts real
+/// CGEvents; tests substitute a recording sink so `handle()` can be driven
+/// with simulated keystrokes without touching the host session.
+protocol SyntheticOutputSink: AnyObject {
+    func applyCompoundBackspaces(bs: Int, out: String)
+    func applyBackspaces(_ count: Int)
+    func applySelectionBackspaces(_ count: Int)
+    func sendEmptyCharacter()
+    func postText(_ string: String)
+}
+
+extension EventTap: SyntheticOutputSink {}
+
 extension EventTap {
     /// Send backspaces for compound apps (Safari, Notes, Chrome, Comet, Atlas, etc.).
     ///
@@ -95,9 +108,6 @@ extension EventTap {
     func applyBackspaces(_ count: Int) {
         guard let eventSource, count > 0 else { return }
         perfNoteEvent(count)
-        if Logger.shared.keystrokeTraceEnabled {
-            Logger.shared.keystroke("postBS n=\(count)")
-        }
         for _ in 0..<count {
             let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 51, keyDown: true)
             down?.setIntegerValueField(.eventSourceStateID, value: syntheticTag)
@@ -138,9 +148,6 @@ extension EventTap {
         perfNoteEvent(1)
         let utf16 = Array(string.utf16)
         guard !utf16.isEmpty else { return }
-        if Logger.shared.keystrokeTraceEnabled {
-            Logger.shared.keystroke("postText '\(string)'")
-        }
         // Only post keyDown — apps render text on keyDown; the synthetic keyUp
         // is unnecessary for text input and doubles the event count, amplifying
         // the backspace-then-insert flicker on every diff replace.

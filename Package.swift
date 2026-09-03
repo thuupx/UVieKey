@@ -26,6 +26,28 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"], .when(platforms: [.macOS])),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../Frameworks"], .when(platforms: [.macOS])),
             ]
-        )
+        ),
+        .testTarget(
+            name: "UVieKeyTests",
+            dependencies: ["UVieKey"],
+            swiftSettings: [
+                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
+            ],
+            linkerSettings: [
+                .linkedFramework("Cocoa"),
+                .linkedFramework("Carbon"),
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("ServiceManagement"),
+                .linkedFramework("Sparkle"),
+                .linkedLibrary("uvie"),
+                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-LFrameworks"], .when(platforms: [.macOS])),
+                // xctest bundle lives at
+                // .build/<triple>/debug/<Tests>.xctest/Contents/MacOS — six
+                // levels up is the package root, where Frameworks/ (Sparkle)
+                // resides.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../../../Frameworks"], .when(platforms: [.macOS])),
+            ]
+        ),
     ]
 )

@@ -18,8 +18,12 @@ final class EventTap: ObservableObject {
     let eventSource: CGEventSource?
 
     let inputMethodManager: InputMethodManager
-    let appDetector = AppContextDetector()
-    let axInjector: AXTextInjector
+    var appDetector: AppContextDetecting
+    var axInjector: AXTextInjecting
+    /// Synthetic-event sink — `self` (real CGEvent posting) in production,
+    /// a recording stub in tests. IUO because it references `self`, which is
+    /// only assignable after all stored properties are initialized.
+    var outputSink: SyntheticOutputSink!
     let macroManager = MacroManager.shared
     let layoutMonitor = KeyboardLayoutMonitor.shared
 
@@ -112,8 +116,11 @@ final class EventTap: ObservableObject {
 
     init(inputMethodManager: InputMethodManager) {
         self.inputMethodManager = inputMethodManager
-        self.axInjector = AXTextInjector(engine: _engine)
         eventSource = CGEventSource(stateID: .privateState)
+        appDetector = AppContextDetector()
+        axInjector = AXTextInjector(engine: _engine)
+        // All stored properties are initialized — `self` is now capturable.
+        outputSink = self
         applyEngineSettings()
         reloadAppCaches()
         observeSettingsChanges()

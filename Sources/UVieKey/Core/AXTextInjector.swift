@@ -77,9 +77,6 @@ final class AXTextInjector {
 
     private func tryInject(bs: Int, out: String, element: AXUIElement) -> Bool {
         guard let current = getTextValue(element) else {
-            if Logger.shared.keystrokeTraceEnabled {
-                Logger.shared.keystroke("axInject: value read failed")
-            }
             return false
         }
 
@@ -89,21 +86,13 @@ final class AXTextInjector {
         var newText = String(current.dropLast(bs))
         newText += out
 
-        if Logger.shared.keystrokeTraceEnabled {
-            Logger.shared.keystroke("axInject bs=\(bs) out='\(out)' read='\(current)' write='\(newText)'")
-        }
-
         // Trust the AXError instead of a read-back verification. The read-back
         // raced with Spotlight's live search: a write that had already landed
         // followed by a stale read returned false → the caller let the real
         // keystroke pass through natively ON TOP of the written text → double
         // input ("viej" became "viejj" → fast-typing "việt" became "vieệt").
         // A genuinely failed write is already reported by the error code.
-        let setResult = setTextValue(element, text: newText)
-        guard setResult == .success else {
-            if Logger.shared.keystrokeTraceEnabled {
-                Logger.shared.keystroke("axInject: set failed err=\(setResult.rawValue)")
-            }
+        guard setTextValue(element, text: newText) == .success else {
             return false
         }
         // AX ranges are measured in UTF-16 code units, not Swift Character

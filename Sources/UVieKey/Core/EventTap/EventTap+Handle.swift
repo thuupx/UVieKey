@@ -279,12 +279,12 @@ extension EventTap {
         // plain backspace for regular apps.
         if bs > 0 {
             if isCompoundApp {
-                applyCompoundBackspaces(bs: bs, out: out)
+                outputSink.applyCompoundBackspaces(bs: bs, out: out)
             } else {
-                applyBackspaces(bs)
+                outputSink.applyBackspaces(bs)
             }
         }
-        postText(out)
+        outputSink.postText(out)
         perfEnd("backspace", keyCode: keyCode, app: app)
         return nil
     }
@@ -311,12 +311,12 @@ extension EventTap {
             let (bs, out) = _engine.commit()
             if bs > 0 {
                 if isCompoundApp {
-                    applyCompoundBackspaces(bs: bs, out: out)
+                    outputSink.applyCompoundBackspaces(bs: bs, out: out)
                 } else {
-                    applyBackspaces(bs)
+                    outputSink.applyBackspaces(bs)
                 }
             }
-            postText(out)
+            outputSink.postText(out)
 
             // Check if the committed text ends with sentence delimiter
             // Note: Space after .!? doesn't make it a new sentence start yet
@@ -375,12 +375,12 @@ extension EventTap {
             let (bs, out) = _engine.commit()
             if bs > 0 {
                 if isCompoundApp {
-                    applyCompoundBackspaces(bs: bs, out: out)
+                    outputSink.applyCompoundBackspaces(bs: bs, out: out)
                 } else {
-                    applyBackspaces(bs)
+                    outputSink.applyBackspaces(bs)
                 }
             }
-            postText(out)
+            outputSink.postText(out)
 
             // Enter/Return starts a new sentence
             updateSentenceStartStateForBreakKey(keyCode)
@@ -420,12 +420,12 @@ extension EventTap {
         // plain backspace for regular apps.
         if bs > 0 {
             if isCompoundApp {
-                applyCompoundBackspaces(bs: bs, out: out)
+                outputSink.applyCompoundBackspaces(bs: bs, out: out)
             } else {
-                applyBackspaces(bs)
+                outputSink.applyBackspaces(bs)
             }
         }
-        postText(out)
+        outputSink.postText(out)
         perfEnd("char", keyCode: keyCode, app: app)
         return nil
     }
@@ -443,20 +443,20 @@ extension EventTap {
 
         if bs > 0 {
             if isCompoundApp {
-                applyCompoundBackspaces(bs: bs, out: "")
+                outputSink.applyCompoundBackspaces(bs: bs, out: "")
             } else {
-                applyBackspaces(bs)
+                outputSink.applyBackspaces(bs)
             }
         }
 
         // Additional backspace if engine didn't catch all
         if abbreviationLength > bs {
             let remaining = abbreviationLength - bs
-            applyBackspaces(remaining)
+            outputSink.applyBackspaces(remaining)
         }
 
         // Insert the expansion
-        postText(expansion)
+        outputSink.postText(expansion)
         _engine.reset()
     }
 
@@ -488,7 +488,7 @@ extension EventTap {
         }
 
         // Re-post the same character as a synthetic event.
-        postText(String(firstChar))
+        outputSink.postText(String(firstChar))
         return nil
     }
 }

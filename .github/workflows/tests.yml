@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-test:
+    name: swift test (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Sparkle framework
+        run: |
+          curl -fsSL -L \
+            https://github.com/sparkle-project/Sparkle/releases/download/2.9.4/Sparkle-2.9.4.tar.xz \
+            -o /tmp/sparkle.tar.xz
+          mkdir -p /tmp/sparkle Frameworks
+          tar xf /tmp/sparkle.tar.xz -C /tmp/sparkle
+          cp -R /tmp/sparkle/Sparkle.framework Frameworks/
+
+      # Generates Sources/UVieKey/Generated/Version.swift and fetches the
+      # pinned uvie-rs engine (scripts/fetch-uvie.sh) into Frameworks/.
+      - name: Generate version info + fetch uvie engine
+        run: ./build.sh
+
+      - name: Run tests
+        run: swift test
