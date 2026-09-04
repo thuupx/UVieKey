@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>UVieKey Changelog</title>
+        <description>Most recent changes with links to updates.</description>
+        <language>vi</language>
+        <!--
+            This appcast is updated automatically by the CI release workflow.
+            Each release adds a new <item> with the EdDSA signature generated
+            by `sign_update` (from Sparkle's bin/).
+            The enclosure URL points to the zip asset uploaded to GitHub
+            Releases. Sparkle downloads, verifies the signature, extracts,
+            replaces UVieKey.app, and relaunches.
+        -->
+        <item>
+        <title>Version 1.8.2</title>
+        <sparkle:version>1788498964</sparkle:version>
+        <sparkle:shortVersionString>1.8.2</sparkle:shortVersionString>
+        <pubDate>Fri, 04 Sep 2026 05:17:45 +0000</pubDate>
+        <enclosure url="https://github.com/thuupx/UVieKey/releases/download/v1.8.2/UVieKey-1.8.2-universal.zip" length="2788219" type="application/octet-stream" sparkle:edSignature="oEcVwO3DCSDNBohwsz4S7zpHsXUMhnEV+DkkqjIAAzG+1NvXWxG1Oglf8oaHFnT2INn3dgHIrwjfLn7s3Mb2Bw==" />
+        <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+    </item>
+    </channel>
+</rss>
