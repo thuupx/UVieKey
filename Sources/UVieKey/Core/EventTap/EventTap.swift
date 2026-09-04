@@ -114,6 +114,11 @@ final class EventTap: ObservableObject {
     /// This avoids a ~5ms AX parent-chain walk on every compound backspace.
     var cachedIsWebContent: Bool? = nil
 
+    /// Reusable UTF-16 scratch buffer for `characterFromCGEvent`. The tap
+    /// callback runs on the main runloop only (see `startTap`), so a single
+    /// buffer is safe — avoids a heap alloc per keystroke.
+    var charBuffer = [UniChar](repeating: 0, count: 4)
+
     init(inputMethodManager: InputMethodManager) {
         self.inputMethodManager = inputMethodManager
         eventSource = CGEventSource(stateID: .privateState)

@@ -75,17 +75,16 @@ extension EventTap {
     }
 
     func characterFromCGEvent(_ event: CGEvent) -> Character? {
-        // Use `.characters` (not `.charactersIgnoringModifiers`) so that
-        // Shift-held key events (e.g. Shift+A → 'A') preserve uppercase.
-        if let nsEvent = NSEvent(cgEvent: event),
-           let chars = nsEvent.characters,
-           let firstChar = chars.first {
-            return firstChar
-        }
+        // Direct translation — equivalent to `NSEvent.characters` (which wraps
+        // this same call) but without the per-keystroke NSEvent allocation.
+        // Shift-held key events preserve uppercase.
         var length: Int = 0
-        var buffer = [UniChar](repeating: 0, count: 4)
-        event.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &length, unicodeString: &buffer)
+        event.keyboardGetUnicodeString(
+            maxStringLength: charBuffer.count,
+            actualStringLength: &length,
+            unicodeString: &charBuffer
+        )
         guard length > 0 else { return nil }
-        return String(utf16CodeUnits: buffer, count: length).first
+        return String(utf16CodeUnits: charBuffer, count: length).first
     }
 }
