@@ -35,6 +35,9 @@ func uvie_engine_backspace(_ engine: OpaquePointer?, _ out_buf: UnsafeMutablePoi
 @_silgen_name("uvie_engine_commit")
 func uvie_engine_commit(_ engine: OpaquePointer?, _ out_buf: UnsafeMutablePointer<CChar>?, _ out_len: Int) -> Int
 
+@_silgen_name("uvie_engine_edit_newest")
+func uvie_engine_edit_newest(_ engine: OpaquePointer?, _ ch: CChar, _ out_buf: UnsafeMutablePointer<CChar>?, _ out_len: Int) -> Int
+
 @_silgen_name("uvie_engine_is_composing")
 func uvie_engine_is_composing(_ engine: OpaquePointer?) -> Int32
 
@@ -133,6 +136,21 @@ final class EngineBridge {
         guard let engine else { return (0, "") }
         let bs = uvie_engine_commit(engine, &scratch, Self.bufferCapacity)
         return (bs, String(cString: scratch))
+    }
+
+    /// Re-enter the most recently committed word with `char` appended to its
+    /// raw keystrokes (LabanKey-style post-commit editing). Returns
+    /// (backspaces, new_output) when handled, nil when there is no committed
+    /// word to edit (the caller then feeds the key normally).
+    func editNewest(char: Character) -> (backspaces: Int, suffix: String)? {
+        guard let engine else { return nil }
+        // Only ASCII keys are feedable; non-ASCII passes 0 which the engine
+        // treats as "not handled".
+        guard let ascii = char.asciiValue else { return nil }
+        let byte = CChar(ascii)
+        let r = uvie_engine_edit_newest(engine, byte, &scratch, Self.bufferCapacity)
+        guard r > 0 else { return nil }
+        return (r - 1, String(cString: scratch))
     }
 
     func reset() {

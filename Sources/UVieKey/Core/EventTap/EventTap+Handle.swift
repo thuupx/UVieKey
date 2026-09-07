@@ -43,6 +43,7 @@ extension EventTap {
         if isExcludedApp {
             if !lastExcludedState {
                 _engine.reset()
+                editCaretBack = 0
                 invalidateWebContentCache()
                 lastExcludedState = true
             }
@@ -89,6 +90,7 @@ extension EventTap {
         if type == .leftMouseDown || type == .rightMouseDown ||
            type == .leftMouseDragged || type == .rightMouseDragged {
             _engine.reset()
+            editCaretBack = 0
             invalidateWebContentCache()
             if type == .leftMouseDown || type == .rightMouseDown {
                 savedIsAtSentenceStart = isAtSentenceStart
@@ -155,6 +157,7 @@ extension EventTap {
         // our state becomes invalid, so reset the engine.
         if type == .keyDown && isSelectionShortcut(keyCode: keyCode, flags: flags) {
             _engine.reset()
+            editCaretBack = 0
             invalidateWebContentCache()
         }
 
@@ -179,12 +182,14 @@ extension EventTap {
             && (keyCode == 51 || keyCode == 117)
             && (flags.contains(.maskCommand) || flags.contains(.maskControl)) {
             _engine.reset()
+            editCaretBack = 0
             invalidateWebContentCache()
         }
         if type == .keyDown
             && keyCode == 117
             && (flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn)) {
             _engine.reset()
+            editCaretBack = 0
             invalidateWebContentCache()
         }
 
@@ -201,6 +206,7 @@ extension EventTap {
                 flags.contains(.maskAlternate) || flags.contains(.maskSecondaryFn))
             && isCursorMovementKey(keyCode) {
             _engine.reset()
+            editCaretBack = 0
             invalidateWebContentCache()
         }
 
@@ -236,6 +242,7 @@ extension EventTap {
             // that no longer match the screen. Without this, switching back
             // to a Latin layout can produce ghost characters.
             _engine.reset()
+            editCaretBack = 0
             // Pass through when non-Latin layout is active (CJK, Cyrillic, etc.)
             return Unmanaged.passRetained(event)
         }
@@ -280,6 +287,7 @@ extension EventTap {
             // V-C-V auto-committed text is also dropped — otherwise the next
             // keystroke diffs against stale state and leaks ghost characters.
             _engine.reset()
+            editCaretBack = 0
             // Pass through to let OS handle the word deletion
             perfEnd("backspace-option", keyCode: keyCode, app: app)
             return Unmanaged.passRetained(event)
@@ -290,7 +298,19 @@ extension EventTap {
             Logger.shared.keystroke("backspace bs=\(bs) out='\(out)' compound=\(isCompoundApp) chromium=\(isChromium)")
         }
         if bs == 0 && out.isEmpty && !_engine.isComposing {
-            // Not composing - let OS handle it
+            // Not composing - let OS handle it. The caret moves 1 char left.
+            // At or left of the anchor (editCaretBack >= 0) the deleted char
+            // belonged to committed text the engine still remembers, so the
+            // history is stale and must be dropped. Right of the anchor
+            // (editCaretBack < 0, the normal post-commit position) the
+            // deleted char is the commit space or later text — the history
+            // stays valid and deleting the space arms editing (offset → 0).
+            if editCaretBack >= 0 {
+                _engine.reset()
+                editCaretBack = 0
+            } else {
+                editCaretBack += 1
+            }
             perfEnd("backspace-os", keyCode: keyCode, app: app)
             return Unmanaged.passRetained(event)
         }
@@ -328,6 +348,7 @@ extension EventTap {
                 }
             }
 
+            let wasComposing = _engine.isComposing
             let (bs, out) = _engine.commit()
             if bs > 0 {
                 if isCompoundApp {
@@ -337,6 +358,11 @@ extension EventTap {
                 }
             }
             outputSink.postText(out)
+            // The anchor moves to the just-committed word's end. When the
+            // engine was composing, the caret sits 1 right of it (the space);
+            // when idle, the caret was already right of the anchor and just
+            // moves 1 further right.
+            editCaretBack = wasComposing ? -1 : editCaretBack - 1
 
             // Check if the committed text ends with sentence delimiter
             // Note: Space after .!? doesn't make it a new sentence start yet
@@ -354,20 +380,29 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
         if type == .keyDown {
-            // Cursor-movement keys (arrows, Home, End, PageUp, PageDown) move
-            // the cursor within text. The diff engine tracks text only at the
-            // insertion point; once the cursor moves, our on-screen model is
-            // invalid. Reset (don't commit) so stale composing state cannot be
-            // applied at the new cursor position. Enter/Tab are true word
-            // boundaries → commit. Escape cancels (handled separately below).
-            // Cursor-movement keys (arrows, Home, End, PageUp, PageDown) move
-            // the cursor within text. Tab (keyCode 48) moves focus between
-            // form fields — both invalidate the web-content cache, since the
-            // focused field may have changed (e.g. Tabbing from the Chromium
-            // omnibox into a Google Docs contenteditable div).
+            // Cursor-movement keys move the caret within text. Left/Right
+            // steps stay inside the engine's committed-word history: commit
+            // the composing word first (it stays on screen) and track the
+            // caret offset so typing at a word end re-enters that word
+            // (LabanKey-style post-commit editing). All other cursor keys
+            // (Up/Down/Home/End/PageUp/PageDown) and Tab jump lines or
+            // focus — the single-line anchor model is invalid, so reset.
             if isCursorMovementKey(keyCode) || keyCode == 48 {
-                _engine.reset()
-                invalidateWebContentCache()
+                if keyCode == 123 {  // Left arrow
+                    if _engine.isComposing {
+                        commitAndInject()
+                    }
+                    editCaretBack += 1
+                } else if keyCode == 124 {  // Right arrow
+                    if _engine.isComposing {
+                        commitAndInject()
+                    }
+                    editCaretBack -= 1
+                } else {
+                    _engine.reset()
+                    editCaretBack = 0
+                    invalidateWebContentCache()
+                }
                 perfEnd("break-arrow", keyCode: keyCode, app: app)
                 return Unmanaged.passRetained(event)
             }
@@ -376,6 +411,7 @@ extension EventTap {
             // matching user expectation that Esc discards in-progress input.
             if keyCode == 53 {
                 _engine.reset()
+                editCaretBack = 0
                 perfEnd("break-esc", keyCode: keyCode, app: app)
                 return Unmanaged.passRetained(event)
             }
@@ -392,21 +428,34 @@ extension EventTap {
                 }
             }
 
-            let (bs, out) = _engine.commit()
-            if bs > 0 {
-                if isCompoundApp {
-                    outputSink.applyCompoundBackspaces(bs: bs, out: out)
-                } else {
-                    outputSink.applyBackspaces(bs)
-                }
-            }
-            outputSink.postText(out)
+            let wasComposing = _engine.isComposing
+            commitAndInject()
+            // The anchor moves to the just-committed word's end. When the
+            // engine was composing, the caret sits 1 right of it (the break
+            // char); when idle, the caret keeps its offset and moves 1
+            // further right past the inserted break char.
+            editCaretBack = wasComposing ? -1 : editCaretBack - 1
 
             // Enter/Return starts a new sentence
             updateSentenceStartStateForBreakKey(keyCode)
         }
         perfEnd("break", keyCode: keyCode, app: app)
         return Unmanaged.passRetained(event)
+    }
+
+    /// Commit the composing word and inject the resulting diff (the same
+    /// output path as a normal keystroke). Used by Space, break keys and the
+    /// Left/Right arrow commit-before-step-back flow.
+    private func commitAndInject() {
+        let (bs, out) = _engine.commit()
+        if bs > 0 {
+            if isCompoundApp {
+                outputSink.applyCompoundBackspaces(bs: bs, out: out)
+            } else {
+                outputSink.applyBackspaces(bs)
+            }
+        }
+        outputSink.postText(out)
     }
 
     // MARK: - Regular character handler
@@ -425,7 +474,44 @@ extension EventTap {
         // Apply auto-capitalize if at sentence start
         let transformedChar = applyAutoCapitalize(to: firstChar)
 
+        // Post-commit editing (LabanKey-style): the caret sits exactly at
+        // the end of the newest committed word and the user types a key —
+        // re-enter that word with the key appended and re-render it in place.
+        // Typing at caretBack > 0 (caret inside earlier text) invalidates
+        // the committed-word history instead. caretBack < 0 (right of the
+        // newest word, the normal position after a commit space) types a
+        // fresh word without disturbing the history.
+        if editCommittedEnabled, !isAXApp {
+            if editCaretBack > 0 {
+                _engine.reset()
+                editCaretBack = 0
+            } else if editCaretBack == 0,
+                !_engine.isComposing,
+                let (bs, out) = _engine.editNewest(char: transformedChar) {
+                if Logger.shared.keystrokeTraceEnabled {
+                    Logger.shared.keystroke("edit-newest char='\(transformedChar)' bs=\(bs) out='\(out)' app=\(app)")
+                }
+                updateSentenceStartState(after: firstChar)
+                if bs > 0 {
+                    if isCompoundApp {
+                        outputSink.applyCompoundBackspaces(bs: bs, out: out)
+                    } else {
+                        outputSink.applyBackspaces(bs)
+                    }
+                }
+                outputSink.postText(out)
+                perfEnd("char-edit", keyCode: keyCode, app: app)
+                return nil
+            }
+        }
+
         let (bs, out) = _engine.feed(char: transformedChar)
+        // Typing right of the anchor (editCaretBack < 0) starts a fresh word
+        // after it; each char moves the caret 1 further from the anchor. At
+        // or left of the anchor the offset was just re-anchored to 0 above.
+        if editCaretBack < 0 {
+            editCaretBack -= 1
+        }
         // Gate the whole trace call — when trace is off (the common case) the
         // string interpolation and the isCompoundApp/isChromium Set lookups
         // must not run. `keystrokeTraceEnabled` is a cached flag (Logger).
@@ -478,6 +564,7 @@ extension EventTap {
         // Insert the expansion
         outputSink.postText(expansion)
         _engine.reset()
+        editCaretBack = 0
     }
 
     // MARK: - English mode handler

@@ -147,6 +147,90 @@ final class DispatcherTests: XCTestCase {
         XCTAssertFalse(tap._engine.isComposing)
     }
 
+    // MARK: - Post-commit word editing (LabanKey-style)
+
+    /// Types `word`, commits it with space, arrows left onto the word end,
+    /// then sends `ch` as the edit key.
+    private func typeCommitArrowLeftThenEdit(_ word: String, _ ch: Character) {
+        let keyCodes: [Character: Int64] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "j": 38, "k": 40,
+            "l": 37, "c": 8, "n": 45, "o": 31, "i": 34, "e": 14, "r": 15,
+            "t": 17, "u": 32, "w": 13, "g": 5, "b": 11, "v": 9, "p": 35,
+        ]
+        for c in word {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: c), unicode: String(c))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))  // space commits
+        assertPassed(send(tap, .keyDown, keyDownEvent(123))) // left arrow
+        assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+    }
+
+    func test_editCommittedWord_toneKeyReplacesInPlace() {
+        // "don" + space commits "don"; arrow-left onto the word end; 's'
+        // re-renders it as "dón": 2 backspaces eat "on", then "ón" is typed.
+        for ch in "don" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+        assertPassed(send(tap, .keyDown, keyDownEvent(123)))
+
+        sink.reset()
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.backspaces(2), .text("ón")])
+    }
+
+    func test_editCommittedWord_backspaceInsteadOfArrowAlsoArms() {
+        // Commit "don", then delete the space with backspace — the caret
+        // lands on the word end and the edit arms the same way.
+        for ch in "don" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+        assertPassed(send(tap, .keyDown, keyDownEvent(51)))
+
+        sink.reset()
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.backspaces(2), .text("ón")])
+    }
+
+    func test_editCommittedWord_midWordCaretPassesThrough() {
+        for ch in "don" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+        // Two arrow-lefts put the caret mid-word (editCaretBack > 0).
+        assertPassed(send(tap, .keyDown, keyDownEvent(123)))
+        assertPassed(send(tap, .keyDown, keyDownEvent(123)))
+
+        // Typing mid-word passes through as a fresh feed; the engine was
+        // reset, so the output is just the raw char.
+        sink.reset()
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.text("s")])
+    }
+
+    func test_editCommittedWord_mouseDownDisarms() {
+        for ch in "don" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+        assertPassed(send(tap, .keyDown, keyDownEvent(123))) // edit-armed
+
+        assertPassed(send(tap, .leftMouseDown, keyDownEvent(0)))
+        sink.reset()
+
+        // The reset cleared the committed-word history: the edit no longer
+        // fires and the key feeds normally.
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.text("s")])
+    }
+
+    /// Maps a character to a plausible keycode for the synthetic event
+    /// (only the unicode payload matters to `characterFromCGEvent`).
+    private func keyCode(for ch: Character) -> Int64 {
+        Int64(ch.asciiValue ?? 0)
+    }
+
     // MARK: - Modifiers & mouse
 
     func test_commandCharacter_passesThrough() {

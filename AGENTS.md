@@ -4,7 +4,7 @@
 
 ```bash
 UVIE_RS_DIR=../uvie-rs ./build.sh && swift run   # Build + run dev instance
-swift test                                        # Run the integration test suite (55 tests)
+swift test                                        # Run the integration test suite (67 tests)
 swift test --filter EngineTypingTests             # Engine typing behavior only
 swift test --filter DispatcherTests               # Event-tap dispatch decisions only
 ```
@@ -25,7 +25,9 @@ Tests simulate user keystrokes WITHOUT touching the host session:
   introspection, and the FFI scratch-buffer reuse contract.
 - **DispatcherTests** — drive `EventTap.handle()` with synthetic CGEvents
   and assert consume/pass-through decisions plus the injection plan.
-  Includes the Cmd+Space → Spotlight refresh-budget regression test.
+  Includes the Cmd+Space → Spotlight refresh-budget regression test and the
+  post-commit word-editing flows (arrow-back + tone key, backspace-arms,
+  mid-word pass-through, mouse-down disarm).
 - **HelperTests** — key classification tables, selection shortcuts,
   auto-capitalize state machine, macro lookup.
 
@@ -63,6 +65,47 @@ UserDefaults.
   `MacroManager` / `Logger` and refreshed via
   `UserDefaults.didChangeNotification`. External `defaults write` needs an
   app restart; in-app toggles apply immediately.
+
+- Settings flags read on the hot path are cached in `EventTap` /
+  `MacroManager` / `Logger` and refreshed via
+  `UserDefaults.didChangeNotification`. External `defaults write` needs an
+  app restart; in-app toggles apply immediately.
+
+## Post-commit word editing (LabanKey-style)
+
+Type a word, commit it (space/Enter), press **Left arrow** to step the caret
+back onto the word end, then type a tone/modifier key — the committed word is
+re-rendered in place (`don` + space + ← + `s` → `dón`). Implemented by:
+
+- **Engine ring** (`uvie-rs`): `commit_diff()` records
+  `(raw, rendered)` per committed word; `uvie_engine_edit_newest` re-renders
+  the extended raw word and returns minimal-edit instructions.
+- **`EventTap.editCaretBack`** — caret offset (screen chars) from the end of
+  the newest committed word (the "anchor"). `0` = caret at the anchor
+  (edit-armed); negative = right of it (normal post-commit position);
+  positive = caret moved into earlier text.
+  - Left/Right arrows: commit the composing word first, then step
+    (`editCaretBack ± 1`). Other cursor keys, Tab, mouse, selection
+    shortcuts, modifier-cursor, Escape, Option+Backspace, non-Latin layout,
+    app switch: full reset + `editCaretBack = 0`.
+  - Backspace while idle: `editCaretBack >= 0` → the deleted char belonged
+    to committed text → engine reset + re-anchor to 0; `< 0` → the commit
+    space (or later text) was deleted → history stays valid, offset +1
+    (deleting the space arms editing).
+  - Character key while armed (`editCaretBack == 0`, engine idle) →
+    `EngineBridge.editNewest` → inject the diff; typing at
+    `editCaretBack > 0` resets the history first; `< 0` feeds normally
+    (fresh word after the anchor, history untouched).
+  - Space/Enter while composing: anchor moves to the just-committed word's
+    end, `editCaretBack = -1`.
+- Gated by `DefaultsKey.editCommittedWords` (default ON, cached in
+  `editCommittedEnabled`, refreshed on settings changes). Disabled for AX
+  apps (Spotlight) — AX injection rewrites the whole field.
+- Known limits (v1): only the NEWEST committed word is editable, and only
+  when the caret sits exactly at its end (one arrow-left after the commit
+  space, or backspace over the space). Mid-word caret or multi-word-back
+  editing passes through untouched. The ring assumes exactly one boundary
+  char between consecutive commits; mouse/selection/Tab resets recover.
 
 ## Notes
 

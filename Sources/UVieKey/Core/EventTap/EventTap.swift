@@ -54,6 +54,19 @@ final class EventTap: ObservableObject {
     /// `applyEngineSettings()` when settings change.
     var autoDisableOnNonLatinLayout = false
 
+    /// Cached `editCommittedWords` flag (LabanKey-style post-commit editing:
+    /// arrow back onto a committed word and type a tone key to re-render it).
+    /// Refreshed in `applyEngineSettings()` when settings change.
+    var editCommittedEnabled = true
+
+    /// Caret distance (in screen characters) between the insertion point and
+    /// the end of the engine's newest committed word. 0 = caret sits exactly
+    /// at that word's end (edit-armed); negative = caret is right of it
+    /// (normal typing position after a commit space); positive = caret moved
+    /// back into earlier text. Tracked in the arrow/backspace/character
+    /// handlers; invalidated (reset to 0) wherever the engine is reset.
+    var editCaretBack = 0
+
     /// Remaining one-shot AX bundleID refresh attempts. Armed (set to
     /// `axRefreshMaxAttempts`) when a potential app-switch trigger is
     /// observed (Cmd/Ctrl/Fn flagsChanged, mouse down). Each keyDown in an
@@ -345,12 +358,17 @@ final class EventTap: ObservableObject {
         // producing ghost characters or wrong output.
         if newMethod != inputMethodManager.inputMethod {
             _engine.reset()
+            editCaretBack = 0
         }
         _engine.setInputMethod(newMethod)
         _engine.setModernOrthography(defaults.bool(forKey: DefaultsKey.modernOrthography))
         _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
         _engine.setQuickTelex(defaults.bool(forKey: DefaultsKey.quickTelex))
         _engine.setQuickStart(defaults.bool(forKey: DefaultsKey.quickStart))
+        // Cache the post-commit-editing flag too — read on the character-key
+        // hot path from the event-tap callback.
+        editCommittedEnabled = defaults.object(forKey: DefaultsKey.editCommittedWords) == nil
+            || defaults.bool(forKey: DefaultsKey.editCommittedWords)
         // Cache the Fn hotkey flag so handleHotkey() doesn't read UserDefaults
         // on every event-tap callback (flagsChanged for any modifier key).
         fnHotkeyEnabled = defaults.bool(forKey: DefaultsKey.inputMethodHotkeyEnabled)
@@ -452,6 +470,7 @@ final class EventTap: ObservableObject {
             guard let self = self else { return }
             // Reset engine to clear ghost characters from previous app
             self._engine.reset()
+            self.editCaretBack = 0
             // Focus moved — the web-content cache is stale.
             self.invalidateWebContentCache()
             // Reset Fn tracking — Fn may have been released while the tap was

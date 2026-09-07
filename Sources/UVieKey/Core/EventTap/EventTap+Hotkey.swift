@@ -95,6 +95,7 @@ extension EventTap {
             // the previous language can produce ghost characters when the
             // user starts typing in the new language.
             self._engine.reset()
+            self.editCaretBack = 0
             self.inputMethodManager.toggle()
             NSSound.beep()
         }
