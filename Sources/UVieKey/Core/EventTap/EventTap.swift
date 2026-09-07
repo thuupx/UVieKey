@@ -85,6 +85,31 @@ final class EventTap: ObservableObject {
     /// Auto-capitalize state: track if we're at the start of a sentence
     var isAtSentenceStart = true
 
+    /// Saved `isAtSentenceStart` from before a mouse-down reset. If an app
+    /// switch follows the mouse down (clicking on another app's window),
+    /// `handleSentenceStartAcrossAppSwitch` restores this value — the click
+    /// was an app-switch, not a cursor reposition within the current app, so
+    /// the pre-click state belongs to the app being left and must survive.
+    /// If no switch follows, the next keyDown discards it and the reset to
+    /// `true` stays (safe default for a new text field). Only saved on the
+    /// initial mouse down — dragged events fire repeatedly during a drag and
+    /// would overwrite the pre-click value with the already-reset `true`.
+    var savedIsAtSentenceStart: Bool? = nil
+
+    /// Per-app sentence-start memory: bundleID → `isAtSentenceStart` as it
+    /// was when the app lost focus, restored on re-activation. Without this,
+    /// the state of the app we are LEAVING bleeds into the app we ENTER
+    /// (e.g. typing "ok. " in app B then clicking back to mid-sentence app A
+    /// would capitalize A's next letter). Session-scoped, not persisted — a
+    /// restart resets to the `true` default, which is safe.
+    var sentenceStartMemory: [String: Bool] = [:]
+
+    /// The app whose sentence-start state currently lives in
+    /// `isAtSentenceStart`. Initialized in `startTap()` (after
+    /// `appDetector.start()` has resolved the focused app) so the FIRST
+    /// app switch already saves the initial app's state.
+    var sentenceStartMemoryApp: String = ""
+
     /// App switch detection: prevent ghost characters from previous app
     var engineResetObserver: NSObjectProtocol?
     var appSwitchObserver: NSObjectProtocol?
@@ -200,6 +225,11 @@ final class EventTap: ObservableObject {
         }
 
         self.tap = newTap
+        // `appDetector.start()` has resolved the focused app by now (both
+        // call paths — start() and the retry — run it before startTap()).
+        // Seed the per-app sentence-start memory so the FIRST app switch
+        // already saves the initial app's state.
+        sentenceStartMemoryApp = appDetector.bundleID
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0)
         self.runLoopSource = source
         // Add the source to the MAIN runloop (same as the original design).
@@ -370,6 +400,7 @@ final class EventTap: ObservableObject {
                   let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                           as? NSRunningApplication else { return }
             self.appDetector.updateBundleID(app)
+            self.handleSentenceStartAcrossAppSwitch(to: app.bundleIdentifier ?? "")
             // Reset Fn tracking on app switch — if the user released Fn while
             // the tap was disabled (excluded app), fnIsDown would be stale.
             self.fnIsDown = false
@@ -378,6 +409,38 @@ final class EventTap: ObservableObject {
             self.invalidateWebContentCache()
             self.updateExcludedTapState()
         }
+    }
+
+    /// Undo a click-initiated mouse-down reset: if a mouse down recently
+    /// saved the sentence-start state, restore it. The click was an
+    /// app-switch, not a cursor reposition within the current app, so the
+    /// pre-click state belongs to the app being left. Called from
+    /// `handleSentenceStartAcrossAppSwitch` before the per-app memory swap.
+    func restoreSentenceStartAfterAppSwitch() {
+        if let saved = savedIsAtSentenceStart {
+            isAtSentenceStart = saved
+            savedIsAtSentenceStart = nil
+        }
+    }
+
+    /// Swap the sentence-start state across an app activation. After
+    /// restoring any click-saved state (so it reflects the LEAVING app's
+    /// pre-click value), save it under the leaving app's bundleID and load
+    /// the entering app's state from memory. An app with no memory yet keeps
+    /// the current state — matching the previous persist-across-switch
+    /// behavior for first visits.
+    func handleSentenceStartAcrossAppSwitch(to newBundleID: String) {
+        restoreSentenceStartAfterAppSwitch()
+        let oldApp = sentenceStartMemoryApp
+        if oldApp != newBundleID {
+            if !oldApp.isEmpty {
+                sentenceStartMemory[oldApp] = isAtSentenceStart
+            }
+            if let remembered = sentenceStartMemory[newBundleID] {
+                isAtSentenceStart = remembered
+            }
+        }
+        sentenceStartMemoryApp = newBundleID
     }
 
     private func observeEngineResetNotification() {

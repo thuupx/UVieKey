@@ -209,6 +209,16 @@ final class DispatcherTests: XCTestCase {
         XCTAssertTrue(sink.calls.isEmpty)
     }
 
+    func test_simulator_bypassesIME_entirely() {
+        // The iOS Simulator does not forward synthetic CGEvents to the guest
+        // OS — it uses its own keyboard routing. Without bypass, UVieKey
+        // consumes the original keyDown and posts a synthetic replacement
+        // that the Simulator never delivers, making typing impossible.
+        detector.bundleID = "com.apple.iphonesimulator"
+        assertPassed(send(tap, .keyDown, keyDownEvent(9, unicode: "v")))
+        XCTAssertTrue(sink.calls.isEmpty, "Simulator should bypass IME — no synthetic events")
+    }
+
     // MARK: - AX mode (Spotlight)
 
     func test_axApp_characterGoesThroughAXInjector() {

@@ -77,10 +77,22 @@ extension EventTap {
         // sentence start, so default to true (safe for new text fields).
         // A click can also change the focused app without a workspace
         // notification (menu-bar Spotlight icon) — arm the AX refresh.
+        //
+        // Save isAtSentenceStart before resetting — but ONLY on the initial
+        // down: dragged events fire repeatedly during a drag and would
+        // overwrite the pre-click value with the already-reset `true`. If
+        // this click switches to a different app, handleSentenceStartAcross
+        // AppSwitch restores the saved value (the click was an app-switch,
+        // not a cursor reposition) and files it under the leaving app in the
+        // per-app memory. Without this, clicking to switch back to an app
+        // mid-sentence causes the next letter to be incorrectly capitalized.
         if type == .leftMouseDown || type == .rightMouseDown ||
            type == .leftMouseDragged || type == .rightMouseDragged {
             _engine.reset()
             invalidateWebContentCache()
+            if type == .leftMouseDown || type == .rightMouseDown {
+                savedIsAtSentenceStart = isAtSentenceStart
+            }
             isAtSentenceStart = true
             axRefreshAttempts = EventTap.axRefreshMaxAttempts
             return Unmanaged.passRetained(event)
@@ -89,6 +101,14 @@ extension EventTap {
         // Only handle keyDown/keyUp
         guard type == .keyDown || type == .keyUp else {
             return Unmanaged.passRetained(event)
+        }
+
+        // Discard any saved sentence-start state from a mouse-down. If an app
+        // switch had followed the mouse down, observeAppSwitch would have
+        // already restored it. Reaching here means no switch occurred (click
+        // within the same app), so the reset to `true` stays.
+        if type == .keyDown {
+            savedIsAtSentenceStart = nil
         }
 
         // If the CGEventSource is nil (rare, but possible if construction

@@ -42,11 +42,18 @@ enum AppDefaults {
     ]
 
     /// Apps that bypass IME entirely (system UI, lock screen, etc.).
+    /// The iOS Simulator is included because it does not forward synthetic
+    /// CGEvents (posted at `.cgSessionEventTap`) to the guest OS — it uses
+    /// its own keyboard routing via simctl/HID. Without bypass, UVieKey
+    /// intercepts keystrokes, consumes the original keyDown, and posts a
+    /// synthetic replacement that the Simulator host receives but never
+    /// delivers to the simulated device, making typing impossible.
     static let bypassApps: Set<String> = [
         "com.apple.loginwindow",
         "com.apple.securityagent",
         "com.apple.ScreenSaver.Engine",
         "com.apple.systemuiserver",
+        "com.apple.iphonesimulator",
     ]
 
     /// Apps that need Accessibility text injection instead of CGEventTap.

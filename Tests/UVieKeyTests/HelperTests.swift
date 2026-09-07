@@ -126,4 +126,132 @@ final class HelperTests: XCTestCase {
         XCTAssertNil(manager.findExpansion(for: "unknown"))
         XCTAssertNil(manager.findExpansion(for: ""))
     }
+
+    // MARK: - Auto-capitalize app-switch save/restore
+
+    func test_mouseDown_savesSentenceStartAndResets() {
+        tap.isAtSentenceStart = false
+        tap.savedIsAtSentenceStart = nil
+
+        // Simulate a mouse down — should save the current state and reset to true.
+        _ = send(tap, .leftMouseDown, keyDownEvent(0))
+
+        XCTAssertEqual(tap.savedIsAtSentenceStart, false,
+                       "mouse down should save the pre-click sentence-start state")
+        XCTAssertTrue(tap.isAtSentenceStart,
+                      "mouse down should reset isAtSentenceStart to true")
+    }
+
+    func test_appSwitch_restoresSavedSentenceStart() {
+        tap.isAtSentenceStart = false
+        tap.savedIsAtSentenceStart = nil
+
+        // Mouse down saves and resets.
+        _ = send(tap, .leftMouseDown, keyDownEvent(0))
+        XCTAssertEqual(tap.savedIsAtSentenceStart, false)
+        XCTAssertTrue(tap.isAtSentenceStart)
+
+        // App switch fires → restore the saved value.
+        tap.restoreSentenceStartAfterAppSwitch()
+        XCTAssertFalse(tap.isAtSentenceStart,
+                       "app switch should restore the pre-mouse-down state")
+        XCTAssertNil(tap.savedIsAtSentenceStart,
+                     "saved state should be cleared after restore")
+    }
+
+    func test_keyDown_clearsSavedSentenceStart_noAppSwitch() {
+        tap.isAtSentenceStart = false
+        tap.savedIsAtSentenceStart = nil
+
+        // Mouse down saves and resets (click within same app = cursor reposition).
+        _ = send(tap, .leftMouseDown, keyDownEvent(0))
+        XCTAssertEqual(tap.savedIsAtSentenceStart, false)
+        XCTAssertTrue(tap.isAtSentenceStart)
+
+        // No app switch follows — next keyDown clears the saved value.
+        // Use space (not a letter) so isAtSentenceStart stays true from the
+        // mouse-down reset — verifying the saved value was NOT restored.
+        _ = send(tap, .keyDown, keyDownEvent(49))
+        XCTAssertNil(tap.savedIsAtSentenceStart,
+                     "keyDown should clear saved state when no app switch followed")
+        XCTAssertTrue(tap.isAtSentenceStart,
+                      "isAtSentenceStart should stay true (cursor reposition, not app switch)")
+    }
+
+    func test_appSwitchRestore_noSavedState_isNoOp() {
+        tap.isAtSentenceStart = true
+        tap.savedIsAtSentenceStart = nil
+
+        tap.restoreSentenceStartAfterAppSwitch()
+        XCTAssertTrue(tap.isAtSentenceStart,
+                      "restore with no saved state should be a no-op")
+        XCTAssertNil(tap.savedIsAtSentenceStart)
+    }
+
+    func test_mouseDragged_doesNotOverwriteSavedState() {
+        tap.isAtSentenceStart = false
+        tap.savedIsAtSentenceStart = nil
+
+        // Initial down saves the pre-click state.
+        _ = send(tap, .leftMouseDown, keyDownEvent(0))
+        XCTAssertEqual(tap.savedIsAtSentenceStart, false)
+
+        // Dragged events must NOT overwrite the saved value with the
+        // already-reset `true`.
+        _ = send(tap, .leftMouseDragged, keyDownEvent(0))
+        XCTAssertEqual(tap.savedIsAtSentenceStart, false,
+                       "dragged events should not overwrite the pre-click state")
+        XCTAssertTrue(tap.isAtSentenceStart)
+    }
+
+    func test_appSwitch_perAppMemoryRoundTrip() {
+        tap.sentenceStartMemory = [:]
+        tap.sentenceStartMemoryApp = "com.test.A"
+        tap.isAtSentenceStart = false // A is mid-sentence
+
+        // Switch to B (never visited): A's state is filed, B keeps current.
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.B")
+        XCTAssertEqual(tap.sentenceStartMemory["com.test.A"], false)
+        XCTAssertFalse(tap.isAtSentenceStart,
+                       "first visit to B keeps the current state (no behavior change)")
+        XCTAssertEqual(tap.sentenceStartMemoryApp, "com.test.B")
+
+        // Type a sentence ending in "." in B → state becomes true.
+        tap.updateSentenceStartState(after: "o")
+        tap.updateSentenceStartState(after: "k")
+        tap.updateSentenceStartState(after: ".")
+        XCTAssertTrue(tap.isAtSentenceStart)
+
+        // Back to A: B's state is filed, A's own mid-sentence state returns.
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.A")
+        XCTAssertEqual(tap.sentenceStartMemory["com.test.B"], true)
+        XCTAssertFalse(tap.isAtSentenceStart,
+                       "A must restore its own mid-sentence state, not B's")
+        XCTAssertTrue(tap.sentenceStartMemory["com.test.A"] == false)
+
+        // Back to B: B's post-delimiter state returns.
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.B")
+        XCTAssertTrue(tap.isAtSentenceStart, "B ended with a delimiter")
+    }
+
+    func test_clickSwitchRoundTrip_midSentenceNotRecapitalized() {
+        // Full repro of the reported bug: mid-sentence in A, click to B,
+        // click back to A — the next letter must NOT be capitalized.
+        tap.sentenceStartMemory = [:]
+        tap.sentenceStartMemoryApp = "com.test.A"
+        tap.autoCapitalizeEnabled = true
+        tap.isAtSentenceStart = false
+
+        // Click B's window (mouse down) → app switch to B.
+        _ = send(tap, .leftMouseDown, keyDownEvent(0))
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.B")
+
+        // Click back into A's window → app switch to A.
+        _ = send(tap, .leftMouseDown, keyDownEvent(0))
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.A")
+
+        // Typing mid-sentence must not capitalize.
+        XCTAssertEqual(tap.applyAutoCapitalize(to: "w"), "w",
+                       "returning mid-sentence must not capitalize")
+    }
 }
