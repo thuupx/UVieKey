@@ -75,37 +75,50 @@ UserDefaults.
 
 Type a word, commit it (space/Enter), press **Left arrow** to step the caret
 back onto the word end, then type a tone/modifier key — the committed word is
-re-rendered in place (`don` + space + ← + `s` → `dón`). Implemented by:
+re-rendered in place (`don` + space + ← + `s` → `dón`). Mid-sentence editing
+works too: arrow back onto ANY of the last 8 committed words (each word-end
+boundary is one arrow step past the newer words' ends) and type. Implemented
+by:
 
 - **Engine ring** (`uvie-rs`): `commit_diff()` records
-  `(raw, rendered)` per committed word; `uvie_engine_edit_newest` re-renders
-  the extended raw word and returns minimal-edit instructions.
+  `(raw, rendered)` per committed word; `uvie_engine_edit_at(caret_back, ch)`
+  walks the ring from the newest backward accumulating `rendered_len + 1`
+  boundary char per older word, and fires only when `caret_back` EXACTLY
+  matches a word-end boundary (0 = newest word). The host's tracked offset
+  is the ground truth: any model drift (double spaces, pastes, unseen jumps)
+  declines safely — never a wrong-span deletion.
+- **Ring truncation on edit**: the edited word AND all newer entries are
+  popped (their anchor geometry is stale once the target is re-entered as
+  the composing word); older entries survive and stay editable.
 - **`EventTap.editCaretBack`** — caret offset (screen chars) from the end of
   the newest committed word (the "anchor"). `0` = caret at the anchor
   (edit-armed); negative = right of it (normal post-commit position);
   positive = caret moved into earlier text.
-  - Left/Right arrows: commit the composing word first, then step
-    (`editCaretBack ± 1`). Other cursor keys, Tab, mouse, selection
+  - Plain Left/Right arrows are intercepted BEFORE the modifier-cursor
+    reset (real hardware arrow events carry `.maskSecondaryFn` +
+    `.maskNumericPad` with no modifier held): commit the composing word
+    first, then step (`editCaretBack ± 1`). Cmd/Ctrl/Option+arrows and
+    Shift+arrows still reset. Other cursor keys, Tab, mouse, selection
     shortcuts, modifier-cursor, Escape, Option+Backspace, non-Latin layout,
     app switch: full reset + `editCaretBack = 0`.
   - Backspace while idle: `editCaretBack >= 0` → the deleted char belonged
     to committed text → engine reset + re-anchor to 0; `< 0` → the commit
     space (or later text) was deleted → history stays valid, offset +1
     (deleting the space arms editing).
-  - Character key while armed (`editCaretBack == 0`, engine idle) →
-    `EngineBridge.editNewest` → inject the diff; typing at
-    `editCaretBack > 0` resets the history first; `< 0` feeds normally
-    (fresh word after the anchor, history untouched).
+  - Character key while armed (`editCaretBack >= 0`, engine idle) →
+    `EngineBridge.editAt(caretBack:char:)` → inject the diff through the
+    normal compound-aware path and re-anchor the offset to 0 (the engine is
+    composing the edited word). Off-boundary decline → reset + normal feed;
+    `< 0` feeds normally (fresh word after the anchor, history untouched).
   - Space/Enter while composing: anchor moves to the just-committed word's
     end, `editCaretBack = -1`.
 - Gated by `DefaultsKey.editCommittedWords` (default ON, cached in
   `editCommittedEnabled`, refreshed on settings changes). Disabled for AX
   apps (Spotlight) — AX injection rewrites the whole field.
-- Known limits (v1): only the NEWEST committed word is editable, and only
-  when the caret sits exactly at its end (one arrow-left after the commit
-  space, or backspace over the space). Mid-word caret or multi-word-back
-  editing passes through untouched. The ring assumes exactly one boundary
-  char between consecutive commits; mouse/selection/Tab resets recover.
+- Known limits: mid-word caret editing passes through (would need
+  after-caret tail preservation + caret restoration); the ring assumes
+  exactly one boundary char between consecutive commits (drift declines
+  safely); mouse/selection/Tab resets recover.
 
 ## Notes
 

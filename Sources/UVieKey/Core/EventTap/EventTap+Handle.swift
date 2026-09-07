@@ -487,35 +487,41 @@ extension EventTap {
         // Apply auto-capitalize if at sentence start
         let transformedChar = applyAutoCapitalize(to: firstChar)
 
-        // Post-commit editing (LabanKey-style): the caret sits exactly at
-        // the end of the newest committed word and the user types a key —
+        // Post-commit editing (LabanKey-style): the caret sits at the end of
+        // a committed word (editCaretBack >= 0) and the user types a key —
         // re-enter that word with the key appended and re-render it in place.
-        // Typing at caretBack > 0 (caret inside earlier text) invalidates
-        // the committed-word history instead. caretBack < 0 (right of the
-        // newest word, the normal position after a commit space) types a
-        // fresh word without disturbing the history.
-        if editCommittedEnabled, !isAXApp {
-            if editCaretBack > 0 {
-                _engine.reset()
-                editCaretBack = 0
-            } else if editCaretBack == 0,
-                !_engine.isComposing,
-                let (bs, out) = _engine.editNewest(char: transformedChar) {
-                if Logger.shared.keystrokeTraceEnabled {
-                    Logger.shared.keystroke("edit-newest char='\(transformedChar)' bs=\(bs) out='\(out)' app=\(app)")
-                }
-                updateSentenceStartState(after: firstChar)
-                if bs > 0 {
-                    if isCompoundApp {
-                        outputSink.applyCompoundBackspaces(bs: bs, out: out)
-                    } else {
-                        outputSink.applyBackspaces(bs)
-                    }
-                }
-                outputSink.postText(out)
-                perfEnd("char-edit", keyCode: keyCode, app: app)
-                return nil
+        // The engine walks its committed-word history and only fires when
+        // caretBack exactly matches a word-end boundary (0 = newest word,
+        // + rendered_len + 1 per older word); off-boundary carets (mid-word,
+        // double spaces, unseen jumps) decline and the key feeds normally.
+        // Typing at caretBack < 0 (right of the newest word, the normal
+        // position after a commit space) types a fresh word without
+        // disturbing the history.
+        if editCommittedEnabled, !isAXApp, editCaretBack >= 0, !_engine.isComposing,
+           let (bs, out) = _engine.editAt(caretBack: editCaretBack, char: transformedChar) {
+            if Logger.shared.keystrokeTraceEnabled {
+                Logger.shared.keystroke("edit-at \(editCaretBack) char='\(transformedChar)' bs=\(bs) out='\(out)' app=\(app)")
             }
+            updateSentenceStartState(after: firstChar)
+            if bs > 0 {
+                if isCompoundApp {
+                    outputSink.applyCompoundBackspaces(bs: bs, out: out)
+                } else {
+                    outputSink.applyBackspaces(bs)
+                }
+            }
+            outputSink.postText(out)
+            // The anchor moves to the edited word's end, which is where the
+            // caret now sits.
+            editCaretBack = 0
+            perfEnd("char-edit", keyCode: keyCode, app: app)
+            return nil
+        }
+        if editCommittedEnabled, !isAXApp, editCaretBack > 0 {
+            // Off-boundary typing inside earlier text invalidates the
+            // committed-word history.
+            _engine.reset()
+            editCaretBack = 0
         }
 
         let (bs, out) = _engine.feed(char: transformedChar)

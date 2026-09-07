@@ -259,6 +259,26 @@ final class DispatcherTests: XCTestCase {
         XCTAssertEqual(sink.calls, [.text("s")])
     }
 
+    func test_editCommittedWord_midSentenceSecondWord() {
+        // "ab cd eg " — arrow back onto "cd" (the middle word) and edit it.
+        // Boundary for cd's end = len("eg") + 1 = 3 behind the anchor; the
+        // post-commit caret starts 1 right of it, so 4 arrow-lefts.
+        for word in ["ab", "cd", "eg"] {
+            for ch in word {
+                assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+            }
+            assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+        }
+        for _ in 0..<("eg".count + 1 + 1) {
+            assertPassed(send(tap, .keyDown, keyDownEvent(123)))
+        }
+        // Typing at cd's end re-enters "cd" → "cds": no backspaces needed
+        // (common prefix), just the suffix.
+        sink.reset()
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.text("s")])
+    }
+
     /// Maps a character to a plausible keycode for the synthetic event
     /// (only the unicode payload matters to `characterFromCGEvent`).
     private func keyCode(for ch: Character) -> Int64 {
