@@ -161,6 +161,32 @@ extension EventTap {
             invalidateWebContentCache()
         }
 
+        // Plain Left/Right arrow steps: commit the composing word (it stays
+        // on screen) and track the caret offset so typing at a word end
+        // re-enters that word (LabanKey-style post-commit editing). This
+        // MUST run before the modifier-cursor reset below: real hardware
+        // arrow events carry function-key flags (.maskSecondaryFn and
+        // .maskNumericPad) even with no modifier held, and that reset would
+        // wipe the committed-word history on every arrow press. Only real
+        // movement modifiers (Cmd/Ctrl/Option, plus Shift = selection,
+        // handled above) still fall through to the reset.
+        if type == .keyDown,
+           keyCode == 123 || keyCode == 124,
+           !flags.contains(.maskCommand), !flags.contains(.maskControl),
+           !flags.contains(.maskAlternate), !flags.contains(.maskShift),
+           !isAXApp {
+            if _engine.isComposing {
+                commitAndInject()
+            }
+            if keyCode == 123 {
+                editCaretBack += 1
+            } else {
+                editCaretBack -= 1
+            }
+            perfEnd("break-arrow", keyCode: keyCode, app: app)
+            return Unmanaged.passRetained(event)
+        }
+
         // Pass through modifier combinations (except Option+Backspace which we handle specially)
         let isAlternateOnly = flags.contains(.maskAlternate) &&
                              !flags.contains(.maskCommand) &&
@@ -380,29 +406,16 @@ extension EventTap {
             return Unmanaged.passRetained(event)
         }
         if type == .keyDown {
-            // Cursor-movement keys move the caret within text. Left/Right
-            // steps stay inside the engine's committed-word history: commit
-            // the composing word first (it stays on screen) and track the
-            // caret offset so typing at a word end re-enters that word
-            // (LabanKey-style post-commit editing). All other cursor keys
-            // (Up/Down/Home/End/PageUp/PageDown) and Tab jump lines or
-            // focus — the single-line anchor model is invalid, so reset.
+            // Remaining cursor-movement keys (Up/Down/Home/End/PageUp/
+            // PageDown) and Tab (keyCode 48) jump lines or move focus —
+            // the single-line anchor model is invalid, so reset. Plain
+            // Left/Right arrows never reach here: they are intercepted
+            // earlier (before the modifier-cursor reset) to keep the
+            // committed-word history alive for post-commit editing.
             if isCursorMovementKey(keyCode) || keyCode == 48 {
-                if keyCode == 123 {  // Left arrow
-                    if _engine.isComposing {
-                        commitAndInject()
-                    }
-                    editCaretBack += 1
-                } else if keyCode == 124 {  // Right arrow
-                    if _engine.isComposing {
-                        commitAndInject()
-                    }
-                    editCaretBack -= 1
-                } else {
-                    _engine.reset()
-                    editCaretBack = 0
-                    invalidateWebContentCache()
-                }
+                _engine.reset()
+                editCaretBack = 0
+                invalidateWebContentCache()
                 perfEnd("break-arrow", keyCode: keyCode, app: app)
                 return Unmanaged.passRetained(event)
             }

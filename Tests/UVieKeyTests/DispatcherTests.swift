@@ -209,6 +209,40 @@ final class DispatcherTests: XCTestCase {
         XCTAssertEqual(sink.calls, [.text("s")])
     }
 
+    /// Real hardware arrow keyDowns carry function-key flags
+    /// (.maskSecondaryFn + .maskNumericPad) even with no modifier held.
+    /// The modifier-cursor reset must NOT swallow them, or the committed
+    /// word is wiped and post-commit editing never arms.
+    func test_editCommittedWord_realArrowFlagsStillArm() {
+        for ch in "don" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+
+        // Arrow-left exactly as a real keyboard delivers it: function-key flags set.
+        let realArrow = keyDownEvent(123, flags: [.maskSecondaryFn, .maskNumericPad])
+        assertPassed(send(tap, .keyDown, realArrow))
+        XCTAssertFalse(tap._engine.isComposing)  // committed, not reset
+
+        sink.reset()
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.backspaces(2), .text("ón")])
+    }
+
+    func test_editCommittedWord_modifierArrowStillResets() {
+        for ch in "don" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
+        }
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+
+        // Cmd+Arrow is a real jump (line start/end): the history must reset.
+        assertPassed(send(tap, .keyDown, keyDownEvent(123, flags: .maskCommand)))
+        sink.reset()
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(1, unicode: "s")))
+        XCTAssertEqual(sink.calls, [.text("s")])
+    }
+
     func test_editCommittedWord_mouseDownDisarms() {
         for ch in "don" {
             assertConsumed(send(tap, .keyDown, keyDownEvent(keyCode(for: ch), unicode: String(ch))))
