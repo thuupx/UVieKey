@@ -1,3 +1,4 @@
+import Carbon
 import XCTest
 @testable import UVieKey
 
@@ -95,6 +96,113 @@ final class HelperTests: XCTestCase {
         tap.isAtSentenceStart = true
         tap.updateSentenceStartState(after: " ")
         XCTAssertTrue(tap.isAtSentenceStart, "space keeps the state")
+    }
+
+    // MARK: - HotkeyBinding model
+
+    func test_hotkeyBinding_keyCombo() {
+        let b = HotkeyBinding(keyCode: 14, modifiers: cmdKey | shiftKey) // ⇧⌘E
+        XCTAssertTrue(b.isValid)
+        XCTAssertFalse(b.isModifierOnly)
+        XCTAssertEqual(b.displayString, "⇧⌘E")
+    }
+
+    func test_hotkeyBinding_modifierOnlyChord() {
+        // Issue #14: modifier-only chords (no letter key) are valid bindings.
+        let b = HotkeyBinding(keyCode: HotkeyBinding.modifierOnlyKeyCode, modifiers: cmdKey | shiftKey)
+        XCTAssertTrue(b.isValid)
+        XCTAssertTrue(b.isModifierOnly)
+        XCTAssertEqual(b.displayString, "⇧⌘")
+    }
+
+    func test_hotkeyBinding_keyCodeZeroIsValid() {
+        // KeyCode 0 is the A key — only an empty modifier mask is invalid.
+        XCTAssertTrue(HotkeyBinding(keyCode: 0, modifiers: cmdKey).isValid)
+        XCTAssertFalse(HotkeyBinding(keyCode: 0, modifiers: 0).isValid)
+        XCTAssertFalse(HotkeyBinding(keyCode: HotkeyBinding.modifierOnlyKeyCode, modifiers: 0).isValid)
+    }
+
+    func test_hotkeyBinding_keyNameTable() {
+        XCTAssertEqual(HotkeyBinding.keyName(for: 0), "A")
+        XCTAssertEqual(HotkeyBinding.keyName(for: 49), "Space")
+        XCTAssertEqual(HotkeyBinding.keyName(for: 36), "Return")
+        XCTAssertEqual(HotkeyBinding.keyName(for: 51), "⌫")
+        XCTAssertEqual(HotkeyBinding.keyName(for: 123), "←")
+        XCTAssertEqual(HotkeyBinding.keyName(for: 122), "F1")
+        XCTAssertEqual(HotkeyBinding.keyName(for: 999), "Key999")
+    }
+
+    func test_hotkeyBinding_fromNSEvent() {
+        // KeyDown with a modifier → binding with Carbon modifier flags.
+        let cgEvent = CGEvent(keyboardEventSource: nil, virtualKey: 14, keyDown: true)!
+        cgEvent.flags = .maskCommand.union(.maskShift)
+        let nsEvent = NSEvent(cgEvent: cgEvent)!
+        let binding = HotkeyBinding(from: nsEvent)
+        XCTAssertNotNil(binding)
+        XCTAssertEqual(binding?.keyCode, 14)
+        XCTAssertEqual(binding?.modifiers, cmdKey | shiftKey)
+
+        // No modifier → not a recordable binding.
+        let bare = CGEvent(keyboardEventSource: nil, virtualKey: 14, keyDown: true)!
+        XCTAssertNil(HotkeyBinding(from: NSEvent(cgEvent: bare)!))
+
+        // keyUp events are never bindings.
+        let up = CGEvent(keyboardEventSource: nil, virtualKey: 14, keyDown: false)!
+        up.flags = .maskCommand
+        XCTAssertNil(HotkeyBinding(from: NSEvent(cgEvent: up)!))
+    }
+
+    // MARK: - KeyboardLayoutMonitor classification
+
+    func test_layoutClassification_latinSources() {
+        XCTAssertTrue(KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.ABC"))
+        XCTAssertTrue(KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.US"))
+        XCTAssertTrue(KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.German"))
+        XCTAssertTrue(KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.VietnameseTelex" ))
+        XCTAssertTrue(KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.British"))
+        // Unknown layouts default to Latin.
+        XCTAssertTrue(KeyboardLayoutMonitor.isLatinSourceID("com.vendor.keylayout.Custom"))
+    }
+
+    func test_layoutClassification_nonLatinSources() {
+        XCTAssertTrue(!KeyboardLayoutMonitor.isLatinSourceID("com.apple.inputmethod.Kotoeri.Japanese"))
+        XCTAssertTrue(!KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.Russian"))
+        XCTAssertTrue(!KeyboardLayoutMonitor.isLatinSourceID("com.apple.inputmethod.Korean.2SetHangul"))
+        XCTAssertTrue(!KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.Ukrainian"))
+        XCTAssertTrue(!KeyboardLayoutMonitor.isLatinSourceID("com.apple.inputmethod.Pinyin"))
+    }
+
+    func test_layoutClassification_ukrainianIsNotLatin() {
+        // Regression: "Ukrainian" contains the Latin keyword "UK" — the
+        // non-Latin check must run first or Ukrainian (Cyrillic) is
+        // misclassified and the engine never auto-disables on it.
+        XCTAssertFalse(KeyboardLayoutMonitor.isLatinSourceID("com.apple.keylayout.Ukrainian"))
+    }
+
+    // MARK: - AXTextInjector text composition
+
+    func test_axComposeText_appendAndReplace() {
+        // Plain append (bs == 0).
+        XCTAssertEqual(AXTextInjector.composeText(current: "vie", bs: 0, out: "ê"), "vieê")
+        // Replace: drop 1 cluster, append the transformed output.
+        XCTAssertEqual(AXTextInjector.composeText(current: "vie", bs: 1, out: "ê"), "viê")
+        // Pure deletion (empty suffix).
+        XCTAssertEqual(AXTextInjector.composeText(current: "việt", bs: 1, out: ""), "việ")
+        // Dropping more than the text length is safe.
+        XCTAssertEqual(AXTextInjector.composeText(current: "ab", bs: 10, out: "x"), "x")
+    }
+
+    func test_axComposeText_dropsGraphemeClustersNotScalars() {
+        // A decomposed Vietnamese vowel + tone mark is ONE grapheme cluster —
+        // dropLast(1) must remove the base vowel WITH its combining mark,
+        // never leave a dangling combining scalar behind.
+        let decomposed = "vie\u{0301}" // "v", "i", "é" (e + combining acute)
+        XCTAssertEqual(decomposed.count, 3)
+        XCTAssertEqual(decomposed.utf16.count, 4, "AX cursor math uses UTF-16 units")
+        XCTAssertEqual(AXTextInjector.composeText(current: decomposed, bs: 1, out: ""), "vi")
+
+        // Emoji (multi-scalar cluster) drops as one unit too.
+        XCTAssertEqual(AXTextInjector.composeText(current: "hi👋", bs: 1, out: ""), "hi")
     }
 
     func test_enterStartsNewSentence() {

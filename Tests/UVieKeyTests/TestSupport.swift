@@ -120,6 +120,7 @@ func makeEventTap(vietnamese: Bool = true) -> EventTap {
     tap.autoCapitalizeEnabled = false
     tap.autoDisableOnNonLatinLayout = false
     tap.fnHotkeyEnabled = false
+    tap.customHotkeyEnabled = false
     tap.cachedExcludedApps = []
     tap.cachedCompoundApps = []
     tap.cachedChromiumApps = []

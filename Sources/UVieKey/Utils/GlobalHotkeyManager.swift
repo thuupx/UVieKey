@@ -3,15 +3,25 @@ import Cocoa
 
 /// Stores a keyboard shortcut as a key code + Carbon modifier flags.
 struct HotkeyBinding: Equatable, Codable {
+    /// KeyCode sentinel for a modifier-only chord (e.g. bare ⌘⇧ with no
+    /// letter key), recorded via the Done button in ShortcutRecorder. Such a
+    /// binding fires when the recorded modifiers are tapped — pressed and
+    /// released with no other key in between — and is detected by the event
+    /// tap only (Carbon `RegisterEventHotKey` requires a real key code).
+    static let modifierOnlyKeyCode = -1
+
     var keyCode: Int
     var modifiers: Int  // Carbon modifier flags (cmdKey, shiftKey, optionKey, controlKey)
 
+    /// True when the binding has no key — just modifiers (e.g. ⌘⇧ alone).
+    var isModifierOnly: Bool { keyCode == HotkeyBinding.modifierOnlyKeyCode }
+
     /// Returns true when at least one modifier and a valid key code are set.
     var isValid: Bool {
-        keyCode >= 0 && modifiers != 0
+        keyCode >= HotkeyBinding.modifierOnlyKeyCode && modifiers != 0
     }
 
-    /// Human-readable description, e.g. "⌘⇧V".
+    /// Human-readable description, e.g. "⌘⇧V" (modifier-only: "⌘⇧").
     var displayString: String {
         guard isValid else { return "Chưa đặt" }
         var s = ""
@@ -19,7 +29,9 @@ struct HotkeyBinding: Equatable, Codable {
         if modifiers & optionKey != 0  { s += "⌥" }
         if modifiers & shiftKey != 0   { s += "⇧" }
         if modifiers & cmdKey != 0     { s += "⌘" }
-        s += HotkeyBinding.keyName(for: keyCode)
+        if keyCode >= 0 {
+            s += HotkeyBinding.keyName(for: keyCode)
+        }
         return s
     }
 
@@ -141,7 +153,10 @@ final class GlobalHotkeyManager: ObservableObject {
         let keyCode = defaults.integer(forKey: DefaultsKey.customToggleKeyCode)
         let modifiers = defaults.integer(forKey: DefaultsKey.customToggleModifiers)
 
-        if keyCode > 0 && modifiers > 0 {
+        // KeyCode 0 is valid (the A key) — the modifier mask is what makes a
+        // binding real (an unset default reads back 0/0, and 0 modifiers is
+        // rejected by HotkeyBinding.isValid). -1 is a modifier-only chord.
+        if keyCode >= HotkeyBinding.modifierOnlyKeyCode && modifiers > 0 {
             binding = HotkeyBinding(keyCode: keyCode, modifiers: modifiers)
         } else {
             binding = nil
@@ -192,6 +207,14 @@ final class GlobalHotkeyManager: ObservableObject {
 
     private func register(_ b: HotkeyBinding) {
         unregister()
+
+        if b.keyCode < 0 {
+            // Modifier-only chords can't be registered with Carbon
+            // (RegisterEventHotKey requires a key code) — they are detected
+            // by the event tap instead (EventTap+Hotkey.handleCustomHotkey).
+            isRegistered = true
+            return
+        }
 
         // Install the event handler once.
         installEventHandlerIfNeeded()

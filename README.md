@@ -53,6 +53,7 @@ Bộ gõ tiếng Việt nhanh, nhẹ và chính xác cho macOS, powered by engin
 | ------ | ----------- |
 | `Fn` (tap) | Chuyển Anh / Việt |
 | Phím tắt tuỳ chỉnh | Chuyển Anh / Việt (cấu hình trong Cài đặt) |
+| Phím tắt tuỳ chỉnh (chỉ phím bổ trợ) | Giữ `⌘⇧` (hoặc tổ hợp modifier bất kỳ) rồi nhấn **Xong** khi đặt phím — nhấn-thả modifier để chuyển Anh / Việt |
 | `Option + Backspace` | Xóa từ — OS xử lý, engine reset |
 | `Shift + Backspace` | Xóa từng ký tự, giữ nguyên case |
 

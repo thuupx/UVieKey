@@ -94,4 +94,58 @@ final class EngineStateTests: XCTestCase {
         XCTAssertEqual(engine.rawChars(), "vieejt")
         XCTAssertTrue(engine.isComposing)
     }
+
+    func test_editAt_declinesWhenNothingCommitted() {
+        let engine = EngineBridge()
+        // No committed words yet — any caretBack must decline.
+        XCTAssertNil(engine.editAt(caretBack: 0, char: "s"))
+        XCTAssertNil(engine.editAt(caretBack: 1, char: "s"))
+        // Negative caretBack is invalid by contract.
+        XCTAssertNil(engine.editAt(caretBack: -1, char: "s"))
+        // Non-ASCII keys are not feedable — declined.
+        XCTAssertNil(engine.editAt(caretBack: 0, char: "ế"))
+    }
+
+    func test_editAt_offBoundaryDeclines() {
+        let engine = EngineBridge()
+        for ch in "don" { _ = engine.feed(char: ch) }
+        _ = engine.commit() // commits "don"; caret 1 right of the word end
+
+        // caretBack 1 is mid-word ("don" ends at 0) — declined.
+        XCTAssertNil(engine.editAt(caretBack: 1, char: "s"))
+        // caretBack 0 = the newest word's end → handled.
+        XCTAssertNotNil(engine.editAt(caretBack: 0, char: "s"))
+    }
+
+    func test_inputMethodSwitch_changesOutput() {
+        // VNI maps tone digits, not Telex letters: "viee1" in VNI keeps the
+        // raw letters (e is not a Telex key there), proving the method switch
+        // reached the engine.
+        let telex = EngineBridge()
+        telex.setInputMethod(.telex)
+        var screen = ""
+        for ch in "viees" {
+            let (bs, out) = telex.feed(char: ch)
+            screen = String(screen.dropLast(bs)) + out
+        }
+        XCTAssertEqual(screen, "viế")
+
+        let vni = EngineBridge()
+        vni.setInputMethod(.vni)
+        screen = ""
+        for ch in "vie61" {
+            let (bs, out) = vni.feed(char: ch)
+            screen = String(screen.dropLast(bs)) + out
+        }
+        XCTAssertEqual(screen, "viế")
+    }
+
+    func test_feed_preservesUppercaseRawKey() {
+        // The engine tracks case from the raw key byte — an uppercase 'A'
+        // must stay uppercase on screen (auto-capitalize composes on top).
+        let engine = EngineBridge()
+        let (bs, out) = engine.feed(char: "A")
+        XCTAssertEqual(bs, 0)
+        XCTAssertEqual(out, "A")
+    }
 }

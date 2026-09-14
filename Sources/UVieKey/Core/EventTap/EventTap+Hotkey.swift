@@ -21,10 +21,15 @@ extension EventTap {
     /// we call `triggerToggle()` on release. Only keyCode 179 (modern Fn/Globe
     /// keyDown/keyUp) is consumed to prevent the emoji picker.
     func handleHotkey(type: CGEventType, event: CGEvent) -> Bool {
-        guard fnHotkeyEnabled else { return false }
-
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
+
+        if handleCustomHotkey(type: type, keyCode: keyCode, flags: flags, event: event) {
+            return true
+        }
+
+        guard fnHotkeyEnabled else { return false }
+
         let fnNow = flags.contains(.maskSecondaryFn)
 
         // ---- Modern Mac keyboards: Fn/Globe sends keyDown/keyUp (keyCode 179) ----
@@ -81,6 +86,84 @@ extension EventTap {
         return false
     }
 
+    /// Detects the user-configured global toggle shortcut inside the event
+    /// tap. The Carbon `RegisterEventHotKey` registration (GlobalHotkeyManager)
+    /// stays as a fallback for when the tap is disabled (excluded apps), but
+    /// Carbon only fires when the frontmost app reports the key unhandled —
+    /// MS Word and other apps with custom text engines consume every keyDown,
+    /// so the hotkey never fires there. The tap sees the keyDown before any
+    /// app, and a consumed event never reaches Carbon's dispatch, so the two
+    /// mechanisms can never double-fire.
+    ///
+    /// Two binding shapes:
+    /// - **Key combo** (keyCode >= 0, e.g. ⌘⇧N): the matching keyDown/keyUp
+    ///   is consumed and the toggle fires on keyDown. Only the chord's four
+    ///   modifiers are compared — padding flags (`.maskNumericPad`,
+    ///   `.maskSecondaryFn`, CapsLock) are ignored — and both events are
+    ///   swallowed so the frontmost app never sees a release for a keyDown
+    ///   it didn't receive.
+    /// - **Modifier-only chord** (keyCode == -1, recorded via the recorder's
+    ///   Done button): fires when the recorded modifiers are TAPPED —
+    ///   pressed and released with no other key in between. Never consumes
+    ///   anything (modifiers must reach the app); any real keyDown cancels
+    ///   the pending tap, so app shortcuts like ⌘⇧N keep working.
+    ///
+    /// Returns `true` when the event belongs to a key-combo binding and was
+    /// consumed; modifier-only tracking always returns `false`.
+    private func handleCustomHotkey(type: CGEventType, keyCode: Int64, flags: CGEventFlags, event: CGEvent) -> Bool {
+        // Require a real binding: an empty flag mask would otherwise match
+        // EVERY unmodified press of the key. KeyCode 0 is valid (the A key) —
+        // the non-empty flag mask is what distinguishes a real binding from
+        // an unset default (both read back as 0 from UserDefaults).
+        guard customHotkeyEnabled, !customHotkeyFlags.isEmpty
+        else { return false }
+
+        if customHotkeyKeyCode < 0 {
+            trackCustomChordTap(type: type, flags: flags)
+            return false
+        }
+
+        guard keyCode == customHotkeyKeyCode,
+              flags.intersection(EventTap.chordModifierMask) == customHotkeyFlags
+        else { return false }
+
+        if type == .keyDown {
+            // Swallow auto-repeat so holding the chord doesn't toggle the
+            // language back and forth on every repeat.
+            if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                triggerToggle()
+            }
+            return true
+        }
+        return type == .keyUp
+    }
+
+    /// Tracks a modifier-only chord tap: the chord arms when the recorded
+    /// modifiers are all down (exact match), stays armed through partial
+    /// releases (users release keys in any order), and fires the toggle when
+    /// every modifier is back up with no key pressed in between. Any real
+    /// keyDown/keyUp disarms — the user is typing an app shortcut, not
+    /// toggling.
+    private func trackCustomChordTap(type: CGEventType, flags: CGEventFlags) {
+        if type == .flagsChanged {
+            let chord = flags.intersection(EventTap.chordModifierMask)
+            if chord.isEmpty {
+                if customChordTapArmed {
+                    triggerToggle()
+                }
+                customChordTapArmed = false
+            } else if chord == customHotkeyFlags {
+                customChordTapArmed = true
+            }
+            // Non-empty mismatch (chord not yet complete, or partially
+            // released): keep the armed state so release order doesn't matter.
+        } else if type == .keyDown || type == .keyUp {
+            // A real key was pressed while the chord was held — the user is
+            // typing an app shortcut (⌘⇧N), not toggling.
+            customChordTapArmed = false
+        }
+    }
+
     func triggerToggle() {
         // Debounce: prevent double-toggle when keyboard sends both flagsChanged AND keyCode 179
         let now = Date()
@@ -95,6 +178,7 @@ extension EventTap {
             // the previous language can produce ghost characters when the
             // user starts typing in the new language.
             self._engine.reset()
+            self.editCaretBack = 0
             self.inputMethodManager.toggle()
             NSSound.beep()
         }

@@ -80,11 +80,7 @@ final class AXTextInjector {
             return false
         }
 
-        // Single dropLast(bs) — a per-iteration loop was O(bs·n) with a fresh
-        // String allocation per iteration (n = full field text length).
-        // dropLast drops grapheme clusters, matching the old loop's semantics.
-        var newText = String(current.dropLast(bs))
-        newText += out
+        let newText = Self.composeText(current: current, bs: bs, out: out)
 
         // Trust the AXError instead of a read-back verification. The read-back
         // raced with Spotlight's live search: a write that had already landed
@@ -100,6 +96,18 @@ final class AXTextInjector {
         // places the cursor before the real end. Use utf16.count instead.
         setCursorToEnd(element, length: newText.utf16.count)
         return true
+    }
+
+    /// Pure transform shared by every injection path: drop `bs` trailing
+    /// grapheme clusters from the current field text and append the engine
+    /// output. Internal + static so tests can pin the semantics — `dropLast`
+    /// operates on grapheme clusters (a decomposed Vietnamese vowel with its
+    /// tone mark is ONE cluster), while cursor placement must use
+    /// `utf16.count` (AX ranges are UTF-16 based).
+    static func composeText(current: String, bs: Int, out: String) -> String {
+        var newText = String(current.dropLast(bs))
+        newText += out
+        return newText
     }
 
     /// Commit on word boundary. Returns true if a macro expansion was

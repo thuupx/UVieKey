@@ -32,6 +32,30 @@ final class KeyboardLayoutMonitor: ObservableObject {
             return true // Default to Latin if can't determine
         }
         let sourceID = Unmanaged<CFString>.fromOpaque(idPtr).takeUnretainedValue() as String
+        return Self.isLatinSourceID(sourceID)
+    }
+
+    /// Classifies an input-source ID as Latin (true) or non-Latin (false).
+    /// Static + internal so tests can drive it without touching TIS.
+    ///
+    /// The non-Latin check runs FIRST: source IDs like "Ukrainian" contain
+    /// the Latin keyword "UK" as a substring, and a Cyrillic layout must not
+    /// be classified Latin just because of that substring.
+    static func isLatinSourceID(_ sourceID: String) -> Bool {
+        // Non-Latin layouts typically contain these keywords
+        let nonLatinKeywords = [
+            "Chinese", "Japanese", "Korean", "Kotoeri", "Hiragana", "Katakana",
+            "Pinyin", "Wubi", "Bopomofo", "Cangjie", "Simplified", "Traditional",
+            "Hangul", "Hanja", "Russian", "Greek", "Arabic", "Hebrew", "Thai",
+            "Hindi", "Devanagari", "Cyrillic", "Georgian", "Armenian",
+            "Ukrainian", "Macedonian", "Bulgarian", "Farsi", "Urdu"
+        ]
+
+        for keyword in nonLatinKeywords {
+            if sourceID.localizedCaseInsensitiveContains(keyword) {
+                return false
+            }
+        }
 
         // Common Latin-based input sources
         let latinKeywords = [
@@ -46,20 +70,6 @@ final class KeyboardLayoutMonitor: ObservableObject {
         for keyword in latinKeywords {
             if sourceID.localizedCaseInsensitiveContains(keyword) {
                 return true
-            }
-        }
-
-        // Non-Latin layouts typically contain these keywords
-        let nonLatinKeywords = [
-            "Chinese", "Japanese", "Korean", "Kotoeri", "Hiragana", "Katakana",
-            "Pinyin", "Wubi", "Bopomofo", "Cangjie", "Simplified", "Traditional",
-            "Hangul", "Hanja", "Russian", "Greek", "Arabic", "Hebrew", "Thai",
-            "Hindi", "Devanagari", "Cyrillic", "Georgian", "Armenian"
-        ]
-
-        for keyword in nonLatinKeywords {
-            if sourceID.localizedCaseInsensitiveContains(keyword) {
-                return false
             }
         }
 

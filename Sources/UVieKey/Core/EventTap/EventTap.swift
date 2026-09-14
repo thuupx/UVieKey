@@ -54,6 +54,47 @@ final class EventTap: ObservableObject {
     /// `applyEngineSettings()` when settings change.
     var autoDisableOnNonLatinLayout = false
 
+    /// Cached `editCommittedWords` flag (LabanKey-style post-commit editing:
+    /// arrow back onto a committed word and type a tone key to re-render it).
+    /// Refreshed in `applyEngineSettings()` when settings change.
+    var editCommittedEnabled = true
+
+    /// Cached custom toggle-hotkey binding for in-tap detection. The Carbon
+    /// `RegisterEventHotKey` registration in `GlobalHotkeyManager` only fires
+    /// when the frontmost app reports the key unhandled — apps with custom
+    /// text engines that consume every keyDown (MS Word, Zed, terminals,
+    /// Chromium content) swallow it before Carbon sees it, so the shortcut
+    /// silently does nothing there. The event tap sees the keyDown before
+    /// ANY app, so matching the recorded binding here makes the shortcut
+    /// work everywhere. `customHotkeyFlags` is the recorded Carbon modifier
+    /// mask converted to `CGEventFlags`; refreshed in `applyEngineSettings()`.
+    var customHotkeyEnabled = false
+    var customHotkeyKeyCode: Int64 = -1
+    var customHotkeyFlags: CGEventFlags = []
+
+    /// Modifier-only chord-tap tracking (see `handleCustomHotkey`): true
+    /// while the recorded modifiers are held and no other key has been
+    /// pressed since the chord completed. The toggle fires when all
+    /// modifiers are released with nothing pressed in between. Event-tap
+    /// callback state, like `fnIsDown` — reset on app switch, tap
+    /// disable/timeout, and mouse down.
+    var customChordTapArmed = false
+
+    /// The four chord modifiers compared when matching the custom hotkey.
+    /// Hardware padding flags on the event (`.maskNumericPad`,
+    /// `.maskSecondaryFn`, CapsLock) are ignored so e.g. an Fn-layer arrow
+    /// or a left/right modifier distinction can't break the match.
+    static let chordModifierMask: CGEventFlags =
+        [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+
+    /// Caret distance (in screen characters) between the insertion point and
+    /// the end of the engine's newest committed word. 0 = caret sits exactly
+    /// at that word's end (edit-armed); negative = caret is right of it
+    /// (normal typing position after a commit space); positive = caret moved
+    /// back into earlier text. Tracked in the arrow/backspace/character
+    /// handlers; invalidated (reset to 0) wherever the engine is reset.
+    var editCaretBack = 0
+
     /// Remaining one-shot AX bundleID refresh attempts. Armed (set to
     /// `axRefreshMaxAttempts`) when a potential app-switch trigger is
     /// observed (Cmd/Ctrl/Fn flagsChanged, mouse down). Each keyDown in an
@@ -345,15 +386,32 @@ final class EventTap: ObservableObject {
         // producing ghost characters or wrong output.
         if newMethod != inputMethodManager.inputMethod {
             _engine.reset()
+            editCaretBack = 0
         }
         _engine.setInputMethod(newMethod)
         _engine.setModernOrthography(defaults.bool(forKey: DefaultsKey.modernOrthography))
         _engine.setRelaxedCoda(defaults.bool(forKey: DefaultsKey.relaxedCoda))
         _engine.setQuickTelex(defaults.bool(forKey: DefaultsKey.quickTelex))
         _engine.setQuickStart(defaults.bool(forKey: DefaultsKey.quickStart))
+        // Cache the post-commit-editing flag too — read on the character-key
+        // hot path from the event-tap callback.
+        editCommittedEnabled = defaults.object(forKey: DefaultsKey.editCommittedWords) == nil
+            || defaults.bool(forKey: DefaultsKey.editCommittedWords)
         // Cache the Fn hotkey flag so handleHotkey() doesn't read UserDefaults
         // on every event-tap callback (flagsChanged for any modifier key).
         fnHotkeyEnabled = defaults.bool(forKey: DefaultsKey.inputMethodHotkeyEnabled)
+        // Cache the custom global hotkey for in-tap detection — see the
+        // comment on `customHotkeyKeyCode` for why the Carbon registration
+        // alone is unreliable.
+        customHotkeyEnabled = defaults.bool(forKey: DefaultsKey.customToggleEnabled)
+        customHotkeyKeyCode = Int64(defaults.integer(forKey: DefaultsKey.customToggleKeyCode))
+        let carbonMods = defaults.integer(forKey: DefaultsKey.customToggleModifiers)
+        var chord: CGEventFlags = []
+        if carbonMods & cmdKey != 0     { chord.insert(.maskCommand) }
+        if carbonMods & shiftKey != 0   { chord.insert(.maskShift) }
+        if carbonMods & optionKey != 0  { chord.insert(.maskAlternate) }
+        if carbonMods & controlKey != 0 { chord.insert(.maskControl) }
+        customHotkeyFlags = chord
         // Cache the auto-capitalize + non-Latin-layout flags too — both are
         // read on every keystroke from the event-tap callback (same rationale
         // as `fnHotkeyEnabled` above).
@@ -405,6 +463,8 @@ final class EventTap: ObservableObject {
             // the tap was disabled (excluded app), fnIsDown would be stale.
             self.fnIsDown = false
             self.fnWasTap = false
+            // Same for the modifier-only chord tap.
+            self.customChordTapArmed = false
             // Focus moved to a different app — the web-content cache is stale.
             self.invalidateWebContentCache()
             self.updateExcludedTapState()
@@ -452,12 +512,15 @@ final class EventTap: ObservableObject {
             guard let self = self else { return }
             // Reset engine to clear ghost characters from previous app
             self._engine.reset()
+            self.editCaretBack = 0
             // Focus moved — the web-content cache is stale.
             self.invalidateWebContentCache()
             // Reset Fn tracking — Fn may have been released while the tap was
             // disabled for an excluded app, leaving fnIsDown stale.
             self.fnIsDown = false
             self.fnWasTap = false
+            // Same for the modifier-only chord tap.
+            self.customChordTapArmed = false
             // Do NOT reset isAtSentenceStart here — it should only be set
             // by sentence delimiters (. ! ?), Enter key, or app launch.
             // Resetting on every app switch causes wrong capitalization
@@ -470,7 +533,8 @@ final class EventTap: ObservableObject {
     /// app is in the excluded list. When excluded, the tap is disabled
     /// entirely so events flow through natively (no interception overhead,
     /// no timeout risk). Re-enables when switching back to a normal app.
-    private func updateExcludedTapState() {
+    /// Internal so tests can drive the state flip without a real tap.
+    func updateExcludedTapState() {
         let bundleID = appDetector.bundleID
         let excluded = cachedExcludedApps.contains(bundleID)
         if excluded != lastExcludedState {

@@ -15,6 +15,7 @@ enum DefaultsKey {
     static let autoDisableOnNonLatinLayout = "AutoDisableOnNonLatinLayout"
     static let quickTelex = "QuickTelex"
     static let quickStart = "QuickStart"
+    static let editCommittedWords = "EditCommittedWords"
     static let customCompoundApps = "CustomCompoundApps"
     static let customChromiumApps = "CustomChromiumApps"
     static let customExcludedApps = "CustomExcludedApps"

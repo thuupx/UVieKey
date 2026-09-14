@@ -20,9 +20,17 @@ final class MacroManager: ObservableObject {
         let id: UUID
         var abbreviation: String
         var expansion: String
-        
+
         init(abbreviation: String, expansion: String) {
             self.id = UUID()
+            self.abbreviation = abbreviation
+            self.expansion = expansion
+        }
+
+        /// Full initializer — lets callers update a macro in place while
+        /// preserving its identity (used by tests and future edit flows).
+        init(id: UUID, abbreviation: String, expansion: String) {
+            self.id = id
             self.abbreviation = abbreviation
             self.expansion = expansion
         }
