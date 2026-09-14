@@ -445,4 +445,447 @@ final class DispatcherTests: XCTestCase {
         assertConsumed(send(tap, .keyDown, keyDownEvent(9, unicode: "v")))
         XCTAssertEqual(detector.refreshCallCount, EventTap.axRefreshMaxAttempts)
     }
+
+    // MARK: - Custom global hotkey (in-tap detection)
+
+    /// Arms the in-tap custom hotkey the way `applyEngineSettings()` caches
+    /// the recorded `HotkeyBinding` (Carbon modifiers → CGEventFlags).
+    /// The tap must detect the shortcut itself: Carbon's RegisterEventHotKey
+    /// only fires when the frontmost app reports the key unhandled, so in
+    /// apps that consume every keyDown (MS Word, Zed, Chromium content) the
+    /// registered hotkey never fires.
+    private func armCustomHotkey(keyCode: Int64, flags: CGEventFlags) {
+        tap.customHotkeyEnabled = true
+        tap.customHotkeyKeyCode = keyCode
+        tap.customHotkeyFlags = flags
+    }
+
+    /// Drains the main queue until the async `triggerToggle()` block has
+    /// executed — the marker is enqueued after it, so FIFO order guarantees
+    /// the toggle ran (or had its chance to run).
+    private func flushToggle() {
+        let exp = expectation(description: "triggerToggle block")
+        DispatchQueue.main.async { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+    }
+
+    func test_customHotkey_keyDownIsConsumedAndToggles() {
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift]) // ⌘⇧E
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(14, flags: [.maskCommand, .maskShift])))
+        XCTAssertTrue(sink.calls.isEmpty)
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_keyUpIsConsumed() {
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+
+        // The frontmost app must not see a keyUp for a keyDown it never
+        // received — swallow it, and never toggle on release.
+        assertConsumed(send(tap, .keyUp, keyUpEvent(14, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_missingModifierPassesThrough() {
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+
+        // ⌘E without Shift is not the recorded chord — passes through as a
+        // normal app shortcut.
+        assertPassed(send(tap, .keyDown, keyDownEvent(14, flags: .maskCommand)))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_extraModifierDoesNotFire() {
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+
+        // ⌘⇧⌥E has a modifier the binding didn't record — not a match.
+        assertPassed(send(tap, .keyDown, keyDownEvent(14, flags: [.maskCommand, .maskShift, .maskAlternate])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_wrongKeyPassesThrough() {
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+
+        assertPassed(send(tap, .keyDown, keyDownEvent(15, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_disabledPassesThrough() {
+        tap.customHotkeyEnabled = false
+        tap.customHotkeyKeyCode = 14
+        tap.customHotkeyFlags = [.maskCommand, .maskShift]
+
+        assertPassed(send(tap, .keyDown, keyDownEvent(14, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_emptyFlagsNeverMatches() {
+        // A corrupted/incomplete binding (keyCode set, no modifiers) must
+        // never match — otherwise every unmodified press of that key would
+        // toggle the language instead of typing.
+        tap.customHotkeyEnabled = true
+        tap.customHotkeyKeyCode = 14
+        tap.customHotkeyFlags = []
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(14, unicode: "e")))
+        XCTAssertEqual(sink.calls, [.text("e")])
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_worksInEnglishMode() {
+        // The whole point of the toggle: it must fire from English mode too
+        // (and in frontmost apps that swallow keyDowns, like MS Word — the
+        // tap sees the event before any app).
+        tap.inputMethodManager.isVietnamese = false
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(14, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_keyCodeZero_stillMatches() {
+        // KeyCode 0 is the A key — a real binding (⌘⇧A) must match even
+        // though an unset default also reads back 0 from UserDefaults.
+        armCustomHotkey(keyCode: 0, flags: [.maskCommand, .maskShift])
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(0, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+
+        // A bare 'a' (no modifiers) is still normal typing.
+        sink.reset()
+        assertConsumed(send(tap, .keyDown, keyDownEvent(0, unicode: "a")))
+        XCTAssertEqual(sink.calls, [.text("a")])
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_customHotkey_autoRepeatDoesNotRetoggle() {
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(14, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+
+        // Clear the debounce timestamp so only the auto-repeat check can
+        // prevent a second toggle — holding the chord must not flicker the
+        // language back and forth.
+        tap.lastToggleTime = nil
+        // The toggle wrote to UserDefaults, whose didChangeNotification
+        // re-runs applyEngineSettings() and resets the cache from the real
+        // (unset) defaults — re-arm before the repeat keystroke.
+        armCustomHotkey(keyCode: 14, flags: [.maskCommand, .maskShift])
+        let repeatEvent = keyDownEvent(14, flags: [.maskCommand, .maskShift])
+        repeatEvent.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        assertConsumed(send(tap, .keyDown, repeatEvent))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+    }
+
+    // MARK: - Modifier-only custom hotkey (chord tap, issue #14)
+
+    /// Arms a modifier-only binding (no key — recorded via the recorder's
+    /// Done button). It fires when the recorded modifiers are tapped:
+    /// pressed and released with no other key in between.
+    private func armChordHotkey(_ flags: CGEventFlags) {
+        tap.customHotkeyEnabled = true
+        tap.customHotkeyKeyCode = Int64(HotkeyBinding.modifierOnlyKeyCode)
+        tap.customHotkeyFlags = flags
+    }
+
+    func test_modifierOnlyChord_tapToggles() {
+        armChordHotkey([.maskCommand, .maskShift])
+
+        // Press ⌘, then ⇧ — chord complete, armed; nothing consumed.
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(55, flags: .maskCommand)))
+        XCTAssertFalse(tap.customChordTapArmed)
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(56, flags: [.maskCommand, .maskShift])))
+        XCTAssertTrue(tap.customChordTapArmed)
+        XCTAssertTrue(sink.calls.isEmpty)
+
+        // Partial release keeps the tap armed (release order must not matter).
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(56, flags: .maskCommand)))
+        XCTAssertTrue(tap.customChordTapArmed)
+
+        // Releasing everything with no key in between fires the toggle.
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(55, flags: [])))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+        XCTAssertFalse(tap.customChordTapArmed)
+    }
+
+    func test_modifierOnlyChord_keyDownCancels() {
+        armChordHotkey([.maskCommand, .maskShift])
+
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(55, flags: .maskCommand)))
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(56, flags: [.maskCommand, .maskShift])))
+        XCTAssertTrue(tap.customChordTapArmed)
+
+        // ⌘⇧N is a real app shortcut — the keyDown cancels the pending tap
+        // and passes through to the app untouched.
+        assertPassed(send(tap, .keyDown, keyDownEvent(45, flags: [.maskCommand, .maskShift])))
+        XCTAssertFalse(tap.customChordTapArmed)
+
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(56, flags: .maskCommand)))
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(55, flags: [])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_modifierOnlyChord_keyUpAlsoCancels() {
+        armChordHotkey([.maskCommand, .maskShift])
+
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(55, flags: .maskCommand)))
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(56, flags: [.maskCommand, .maskShift])))
+
+        // A keyUp while the chord is held (e.g. the tail of a fast shortcut)
+        // also cancels the pending tap.
+        assertPassed(send(tap, .keyUp, keyUpEvent(45, flags: [.maskCommand, .maskShift])))
+        XCTAssertFalse(tap.customChordTapArmed)
+
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(56, flags: .maskCommand)))
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(55, flags: [])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_modifierOnlyChord_neverConsumesKeyEvents() {
+        armChordHotkey([.maskCommand, .maskShift])
+
+        // Modifier-only bindings must never swallow key events — app
+        // shortcuts (⌘⇧V) and normal typing keep working.
+        assertPassed(send(tap, .keyDown, keyDownEvent(9, flags: [.maskCommand, .maskShift])))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    // MARK: - Fn tap toggle
+
+    func test_fnTap_globeKey_consumedAndToggles() {
+        tap.fnHotkeyEnabled = true
+
+        // Modern keyboards: Globe/Fn sends keyCode 179 down+up; both are
+        // consumed (emoji-picker suppression), the toggle fires on release.
+        assertConsumed(send(tap, .keyDown, keyDownEvent(179)))
+        XCTAssertTrue(tap.fnIsDown)
+        XCTAssertTrue(tap.fnWasTap)
+
+        assertConsumed(send(tap, .keyUp, keyUpEvent(179)))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+        XCTAssertFalse(tap.fnIsDown)
+        XCTAssertFalse(tap.fnWasTap)
+    }
+
+    func test_fnTap_flagsChangedPath_togglesOnRelease() {
+        tap.fnHotkeyEnabled = true
+
+        // Older keyboards: Fn arrives only as flagsChanged — never consumed.
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(179, flags: .maskSecondaryFn)))
+        XCTAssertTrue(tap.fnIsDown)
+        XCTAssertTrue(tap.fnWasTap)
+
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(54, flags: [])))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+        XCTAssertFalse(tap.fnIsDown)
+    }
+
+    func test_fnTap_realKeyBetweenPressAndRelease_cancelsTap() {
+        tap.fnHotkeyEnabled = true
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(179)))
+        // Fn+key combination — the tap is no longer a bare Fn tap.
+        assertPassed(send(tap, .keyDown, keyDownEvent(0, flags: .maskSecondaryFn, unicode: "a")))
+        assertConsumed(send(tap, .keyUp, keyUpEvent(179)))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese, "Fn+key must not toggle")
+    }
+
+    func test_fnTap_debouncedWithin200ms() {
+        tap.fnHotkeyEnabled = true
+
+        // First tap toggles.
+        assertConsumed(send(tap, .keyDown, keyDownEvent(179)))
+        assertConsumed(send(tap, .keyUp, keyUpEvent(179)))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+
+        // The toggle wrote to UserDefaults, whose didChangeNotification
+        // re-runs applyEngineSettings() and resets the cached flag from the
+        // real (machine-specific) defaults — re-pin before the second tap.
+        tap.fnHotkeyEnabled = true
+
+        // A second tap inside the 0.2s debounce window is swallowed (some
+        // keyboards deliver both flagsChanged AND keyCode 179 for one press).
+        assertConsumed(send(tap, .keyDown, keyDownEvent(179)))
+        assertConsumed(send(tap, .keyUp, keyUpEvent(179)))
+        flushToggle()
+        XCTAssertFalse(tap.inputMethodManager.isVietnamese)
+    }
+
+    func test_fnTap_staleFnState_doesNotToggleOnOtherModifiers() {
+        // Bug #14 regression: stale fnIsDown + fnWasTap must not fire the
+        // toggle when a Cmd/Shift/Option flagsChanged arrives after the tap
+        // was disabled (Fn released unseen).
+        tap.fnHotkeyEnabled = true
+        tap.fnIsDown = true
+        tap.fnWasTap = false
+
+        assertPassed(send(tap, .flagsChanged, keyDownEvent(54, flags: .maskCommand)))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+        XCTAssertFalse(tap.fnIsDown, "non-Fn flagsChanged clears stale Fn state")
+    }
+
+    func test_fnTap_disabled_globeKeyPassesThrough() {
+        tap.fnHotkeyEnabled = false
+        assertPassed(send(tap, .keyDown, keyDownEvent(179)))
+        assertPassed(send(tap, .keyUp, keyUpEvent(179)))
+        flushToggle()
+        XCTAssertTrue(tap.inputMethodManager.isVietnamese)
+    }
+
+    // MARK: - English mode
+
+    func test_englishMode_spaceAndBackspacePassThrough() {
+        tap.inputMethodManager.isVietnamese = false
+
+        assertPassed(send(tap, .keyDown, keyDownEvent(49)))
+        assertPassed(send(tap, .keyDown, keyDownEvent(51)))
+        XCTAssertTrue(sink.calls.isEmpty)
+    }
+
+    func test_englishMode_breakKeysPassThrough() {
+        tap.inputMethodManager.isVietnamese = false
+
+        for keyCode in [Int64(36), 48, 53, 123, 126] {
+            assertPassed(send(tap, .keyDown, keyDownEvent(keyCode)))
+        }
+        XCTAssertTrue(sink.calls.isEmpty)
+    }
+
+    func test_englishMode_characterKeyUp_suppressed() {
+        tap.inputMethodManager.isVietnamese = false
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(9, unicode: "v")))
+        XCTAssertEqual(sink.calls, [.text("v")])
+        sink.reset()
+
+        // The original keyUp is suppressed — the synthetic keyDown already
+        // produced the character.
+        assertConsumed(send(tap, .keyUp, keyUpEvent(9, unicode: "v")))
+        XCTAssertTrue(sink.calls.isEmpty)
+    }
+
+    func test_englishMode_nonCharacterKey_passesThrough() {
+        tap.inputMethodManager.isVietnamese = false
+
+        // A keyDown whose unicode payload is empty (hardware function keys
+        // arrive without characters) is not a character — passes through
+        // untouched instead of being re-posted as a string event.
+        assertPassed(send(tap, .keyDown, keyDownEvent(96, unicode: "")))
+        XCTAssertTrue(sink.calls.isEmpty)
+    }
+
+    func test_englishMode_functionKeyGlyph_passesThrough() {
+        tap.inputMethodManager.isVietnamese = false
+
+        // Function keys translate to private-use unicode (0xF700–0xF8FF).
+        // Re-posting them as string events would strip the keycode and break
+        // app shortcuts (F5 refresh) — they must pass through untouched.
+        assertPassed(send(tap, .keyDown, keyDownEvent(96, unicode: "\u{F708}")))
+        XCTAssertTrue(sink.calls.isEmpty)
+    }
+
+    // MARK: - Non-Latin layout auto-disable
+
+    func test_nonLatinLayout_passesThroughAndResetsEngine() {
+        for ch in "vie" {
+            assertConsumed(send(tap, .keyDown, keyDownEvent(0, unicode: String(ch))))
+        }
+        XCTAssertTrue(tap._engine.isComposing)
+
+        tap.autoDisableOnNonLatinLayout = true
+        tap.layoutMonitor.isNonLatinLayout = true
+
+        assertPassed(send(tap, .keyDown, keyDownEvent(0, unicode: "a")))
+        XCTAssertFalse(tap._engine.isComposing, "layout switch must reset stale composing state")
+    }
+
+    func test_latinLayout_stillProcesses() {
+        tap.autoDisableOnNonLatinLayout = true
+        tap.layoutMonitor.isNonLatinLayout = false
+
+        assertConsumed(send(tap, .keyDown, keyDownEvent(0, unicode: "v")))
+        XCTAssertEqual(sink.calls, [.text("v")])
+    }
+
+    // MARK: - Excluded-tap state
+
+    func test_updateExcludedTapState_tracksStateWithoutTap() {
+        // No real CGEventTap exists in tests — the state flip must not crash.
+        detector.bundleID = "com.test.excluded"
+        tap.cachedExcludedApps = ["com.test.excluded"]
+
+        XCTAssertFalse(tap.lastExcludedState)
+        tap.updateExcludedTapState()
+        XCTAssertTrue(tap.lastExcludedState)
+
+        detector.bundleID = "com.test.editor"
+        tap.updateExcludedTapState()
+        XCTAssertFalse(tap.lastExcludedState)
+    }
+
+    func test_sentenceStartMemory_savesAndRestoresPerApp() {
+        tap.isAtSentenceStart = false
+        tap.sentenceStartMemoryApp = "com.test.editor"
+
+        // Switching to a new app saves the leaving app's state and loads the
+        // entering app's remembered state.
+        tap.sentenceStartMemory["com.test.other"] = true
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.other")
+        XCTAssertEqual(tap.sentenceStartMemory["com.test.editor"], false)
+        XCTAssertTrue(tap.isAtSentenceStart)
+        XCTAssertEqual(tap.sentenceStartMemoryApp, "com.test.other")
+
+        // Switching back restores the saved state.
+        tap.handleSentenceStartAcrossAppSwitch(to: "com.test.editor")
+        XCTAssertFalse(tap.isAtSentenceStart)
+    }
+
+    // MARK: - AX mode key-up paths
+
+    func test_axApp_keyUpsRouteCorrectly() {
+        detector.bundleID = "com.apple.Spotlight"
+
+        // Character keyUp is suppressed (the synthetic keyDown already
+        // produced the character via AX).
+        assertConsumed(send(tap, .keyUp, keyUpEvent(9, unicode: "v")))
+
+        // Backspace/space keyUps pass so the OS sees the full key cycle.
+        assertPassed(send(tap, .keyUp, keyUpEvent(51)))
+        assertPassed(send(tap, .keyUp, keyUpEvent(49)))
+        XCTAssertEqual(axInjector.backspaceCount, 0)
+        XCTAssertEqual(axInjector.commitCount, 0)
+    }
+
+    func test_axApp_nonLatinLayout_passesThrough() {
+        detector.bundleID = "com.apple.Spotlight"
+        tap.autoDisableOnNonLatinLayout = true
+        tap.layoutMonitor.isNonLatinLayout = true
+
+        assertPassed(send(tap, .keyDown, keyDownEvent(9, unicode: "v")))
+        XCTAssertTrue(axInjector.fedChars.isEmpty)
+    }
 }

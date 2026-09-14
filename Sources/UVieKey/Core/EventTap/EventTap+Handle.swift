@@ -21,6 +21,9 @@ extension EventTap {
                 // Shift, Option) to be misidentified as an Fn release.
                 fnIsDown = false
                 fnWasTap = false
+                // Same for the modifier-only chord tap — the release events
+                // were missed while the tap was down.
+                customChordTapArmed = false
                 Logger.shared.warn("EventTap: tap was disabled (rawType=\(rawType)), re-enabled, Fn state reset")
             }
             return Unmanaged.passRetained(event)
@@ -92,6 +95,9 @@ extension EventTap {
             _engine.reset()
             editCaretBack = 0
             invalidateWebContentCache()
+            // A click while the modifier chord is held (e.g. shift-click
+            // selection) is not a chord tap — disarm.
+            customChordTapArmed = false
             if type == .leftMouseDown || type == .rightMouseDown {
                 savedIsAtSentenceStart = isAtSentenceStart
             }
@@ -248,6 +254,14 @@ extension EventTap {
 
         // Pass through Command keys themselves.
         if keyCode == 55 || keyCode == 54 {
+            return Unmanaged.passRetained(event)
+        }
+
+        // The Globe/Fn key (keyCode 179) is not a text character. With the Fn
+        // tap toggle disabled, handleHotkey didn't consume it — pass it
+        // through so the system emoji picker / Globe actions keep working.
+        // (With the toggle enabled, handleHotkey already consumed it.)
+        if keyCode == 179 {
             return Unmanaged.passRetained(event)
         }
 
@@ -474,6 +488,17 @@ extension EventTap {
     // MARK: - Regular character handler
 
     private func handleCharacterKey(type: CGEventType, keyCode: Int64, app: String, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // Function keys and other non-printing keys translate to private-use
+        // unicode (0xF700–0xF8FF). They are not text: feeding them to the
+        // engine consumes the event and swallows app/system shortcuts
+        // (F5 refresh, media keys) — pass them through untouched.
+        if let glyph = characterFromCGEvent(event),
+           let scalar = glyph.unicodeScalars.first,
+           (0xF700...0xF8FF).contains(scalar.value) {
+            perfEnd("char-fnkey", keyCode: keyCode, app: app)
+            return Unmanaged.passRetained(event)
+        }
+
         if type == .keyUp {
             perfEnd("char-keyup", keyCode: keyCode, app: app)
             return nil  // Suppress original keyUp; we already sent synthetic
@@ -599,6 +624,15 @@ extension EventTap {
     private func handleEnglishMode(type: CGEventType, keyCode: Int64, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Non-character keys pass through naturally.
         if keyCode == 51 || keyCode == 49 || isBreakKey(keyCode) {
+            return Unmanaged.passRetained(event)
+        }
+
+        // Function keys translate to private-use unicode (0xF700–0xF8FF) —
+        // not text. Re-posting them as string events would strip the keycode
+        // and break app shortcuts, so pass the full key cycle through.
+        if let glyph = characterFromCGEvent(event),
+           let scalar = glyph.unicodeScalars.first,
+           (0xF700...0xF8FF).contains(scalar.value) {
             return Unmanaged.passRetained(event)
         }
 
