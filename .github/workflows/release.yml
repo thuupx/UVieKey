@@ -85,20 +85,29 @@ jobs:
           rm /tmp/certificate.p12
 
       # ── 5. Build Swift app ────────────────────────────────────────────────
+      # Build each arch and immediately copy the binary aside — swiftbuild
+      # (Swift 6.4+) outputs both arches to the same path, so the second
+      # build would overwrite the first. `--show-bin-path` gives the actual
+      # output directory regardless of build system (swiftbuild vs native).
       - name: Build UVieKey (arm64)
         run: |
           swift build --configuration release --arch arm64
+          BIN_DIR=$(swift build --configuration release --arch arm64 --show-bin-path)
+          mkdir -p .build/arch
+          cp "$BIN_DIR/UVieKey" .build/arch/UVieKey-arm64
 
       - name: Build UVieKey (x86_64)
         run: |
           swift build --configuration release --arch x86_64
+          BIN_DIR=$(swift build --configuration release --arch x86_64 --show-bin-path)
+          cp "$BIN_DIR/UVieKey" .build/arch/UVieKey-x86_64
 
       - name: Lipo Swift binary to universal
         run: |
           mkdir -p .build/release
           lipo -create \
-            .build/arm64-apple-macosx/release/UVieKey \
-            .build/x86_64-apple-macosx/release/UVieKey \
+            .build/arch/UVieKey-arm64 \
+            .build/arch/UVieKey-x86_64 \
             -output .build/release/UVieKey
 
       # ── 6. Bundle .app ────────────────────────────────────────────────────

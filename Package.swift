@@ -1,5 +1,10 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.4
 import PackageDescription
+import Foundation
+
+let packageRoot = URL(fileURLWithPath: #file).deletingLastPathComponent().path
+let frameworksPath = URL(fileURLWithPath: packageRoot)
+    .appendingPathComponent("Frameworks").path
 
 let package = Package(
     name: "UVieKey",
@@ -12,7 +17,7 @@ let package = Package(
             name: "UVieKey",
             dependencies: [],
             swiftSettings: [
-                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-F", frameworksPath], .when(platforms: [.macOS])),
             ],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
@@ -21,17 +26,18 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("Sparkle"),
                 .linkedLibrary("uvie"),
-                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
-                .unsafeFlags(["-LFrameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-F", frameworksPath], .when(platforms: [.macOS])),
+                .unsafeFlags(["-L", frameworksPath], .when(platforms: [.macOS])),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"], .when(platforms: [.macOS])),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../Frameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../Frameworks"], .when(platforms: [.macOS])),
             ]
         ),
         .testTarget(
             name: "UVieKeyTests",
             dependencies: ["UVieKey"],
             swiftSettings: [
-                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-F", frameworksPath], .when(platforms: [.macOS])),
             ],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
@@ -40,13 +46,10 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("Sparkle"),
                 .linkedLibrary("uvie"),
-                .unsafeFlags(["-F", "Frameworks"], .when(platforms: [.macOS])),
-                .unsafeFlags(["-LFrameworks"], .when(platforms: [.macOS])),
-                // xctest bundle lives at
-                // .build/<triple>/debug/<Tests>.xctest/Contents/MacOS — six
-                // levels up is the package root, where Frameworks/ (Sparkle)
-                // resides.
+                .unsafeFlags(["-F", frameworksPath], .when(platforms: [.macOS])),
+                .unsafeFlags(["-L", frameworksPath], .when(platforms: [.macOS])),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../../../Frameworks"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../../../../../../Frameworks"], .when(platforms: [.macOS])),
             ]
         ),
     ]
