@@ -2,7 +2,7 @@
 import PackageDescription
 import Foundation
 
-let packageRoot = URL(fileURLWithPath: #file).deletingLastPathComponent().path
+let packageRoot = FileManager.default.currentDirectoryPath
 let frameworksPath = URL(fileURLWithPath: packageRoot)
     .appendingPathComponent("Frameworks").path
 
@@ -18,6 +18,7 @@ let package = Package(
             dependencies: [],
             swiftSettings: [
                 .unsafeFlags(["-F", frameworksPath], .when(platforms: [.macOS])),
+                .swiftLanguageMode(.v5),
             ],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
@@ -38,6 +39,7 @@ let package = Package(
             dependencies: ["UVieKey"],
             swiftSettings: [
                 .unsafeFlags(["-F", frameworksPath], .when(platforms: [.macOS])),
+                .swiftLanguageMode(.v5),
             ],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
